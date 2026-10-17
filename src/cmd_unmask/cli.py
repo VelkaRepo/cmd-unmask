@@ -6,7 +6,7 @@ import argparse
 import sys
 from typing import Sequence
 
-from cmd_unmask.ingestion import ingest_single_command
+from cmd_unmask.ingestion import ingest_single_command, ingest_source
 from cmd_unmask.models import Severity, TriageConfig, TriageVerdict
 from cmd_unmask.renderer import render_json, render_jsonl, render_markdown
 from cmd_unmask.unpacker import unmask_command
@@ -66,6 +66,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     records = []
     if args.cmd is not None:
         records.append(ingest_single_command(args.cmd, source_id="cli"))
+    elif args.file is not None:
+        records.extend(ingest_source(args.file, custom_field=args.field))
     elif not sys.stdin.isatty():
         stdin_text = sys.stdin.read()
         records.append(ingest_single_command(stdin_text, source_id="stdin"))
