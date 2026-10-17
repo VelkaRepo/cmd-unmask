@@ -1,5 +1,6 @@
 .scratch/
 .obsidian/
+SOUL.md
 __pycache__/
 *.pyc
 .venv/
