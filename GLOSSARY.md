@@ -52,3 +52,8 @@ _Avoid_: Interpreter, emulator, AST evaluator
 An extracted Indicator of Compromise neutralized with bracketed notation (`hxxp`, `[.]`, `[:]`) so analysts can paste it into tickets without triggering accidental network requests.
 _Avoid_: Sanitized URL, masked indicator, escaped IOC
 
+**Primary Unmasked Payload**:
+The highest-signal terminal leaf node selected from the Unpacking DAG as the headline decoded command in the Triage Verdict.
+_Avoid_: Best guess, final string, winner node
+
+
