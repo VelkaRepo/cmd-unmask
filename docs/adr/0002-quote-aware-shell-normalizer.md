@@ -1,0 +1,3 @@
+# Quote-Aware Two-Pass Shell Normalizer
+
+The Shell Normalizer uses a quote-aware state machine split into a `cmd.exe` pass and a PowerShell pass rather than global regex character stripping. Global removal of `^` or backtick `` ` `` corrupts legitimate characters inside single-quoted URLs, regexes, or bitwise XOR expressions. The `cmd.exe` pass strips unquoted `^` escapes, collapses adjacent empty quotes, and resolves inline `set` variables plus canonical Windows 11 environment variable slices (`%COMSPEC:~-3%`, `%PUBLIC%`, etc.); the PowerShell pass strips identifier backtick obfuscation outside single-quoted literals (`'...'`) while preserving valid escape sequences (`` `n ``, `` `r ``, `` `t ``, `` `0 ``).
