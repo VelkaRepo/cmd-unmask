@@ -1,0 +1,3 @@
+# Case-Aware Bottom-Up Static Expression Resolver
+
+The Expression Resolver folds obfuscated PowerShell and Bash string operations using a bounded fixed-point token reducer (up to 20 passes per Payload Node) rather than a full language grammar or dynamic execution. To handle real-world mixed-case obfuscation accurately, all PowerShell operators and .NET type accelerators (`-f`, `-join`, `-split`, `-replace`, `[char]`, `[convert]::FromBase64String`, `[Text.Encoding]::UTF8.GetString` / `Unicode.GetString` / `ASCII.GetString`, `[array]::Reverse`) are matched case-insensitively, while `.Replace()` preserves .NET's case-sensitive literal matching semantics in contrast to PowerShell's case-insensitive `-replace` operator.
