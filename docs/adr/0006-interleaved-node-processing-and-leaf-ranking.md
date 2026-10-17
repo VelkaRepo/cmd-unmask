@@ -1,0 +1,3 @@
+# Interleaved Node Processing Cycle and Deterministic Primary Leaf Ranking
+
+Because real-world obfuscated stagers alternate between encoding layers and string expressions across multiple stages, every Payload Node entering the Unpacking DAG executes a three-step interleaved cycle: (1) Shell Normalizer pass, (2) fixed-point Expression Resolver pass, and (3) Span Extraction and Candidate Decoder expansion. When a branching DAG finishes exploration, terminal leaf nodes are ranked deterministically by `(is_reconstructed_command, depth, behavioral_rule_hits, extracted_ioc_count, printable_ratio)` to promote the highest-signal leaf as the Primary Unmasked Payload while preserving all sibling leaves and the full Provenance Chain.
