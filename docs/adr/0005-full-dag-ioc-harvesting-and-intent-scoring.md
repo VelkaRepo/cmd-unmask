@@ -1,0 +1,3 @@
+# Full-DAG IOC Harvesting and Dual-Stage Behavioral Intent Scoring
+
+IOC extraction and behavioral classification inspect every Payload Node across the Unpacking DAG rather than only final leaf nodes, ensuring indicators or intermediate stagers exposed in middle layers survive even if deeper transformations partially fail. Extracted IOCs are emitted in both raw and Defanged IOC formats (`hxxp`, `[.]`, `[:]`) tagged with the originating Payload Node ID, and the Triage Verdict combines unmasked behavioral/LOLBin intent severity with an obfuscation depth/technique multiplier so heavily obfuscated commands never silently score as benign.
