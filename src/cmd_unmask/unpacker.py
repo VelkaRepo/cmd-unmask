@@ -4,16 +4,18 @@ from __future__ import annotations
 
 from cmd_unmask.models import (
     PayloadNode,
+    ProvenanceStep,
     Severity,
     TriageConfig,
     TriageVerdict,
     UnpackingDAG,
 )
+from cmd_unmask.normalizer import normalize_shell
 
 
 def unpack_dag(command_text: str, config: TriageConfig | None = None) -> UnpackingDAG:
     """Explore the Unpacking DAG starting from command_text."""
-    _ = config or TriageConfig()
+    cfg = config or TriageConfig()
     root_node = PayloadNode(
         node_id="node_0",
         text=command_text,
@@ -21,11 +23,45 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
         parent_id=None,
         technique="root",
     )
+    nodes: dict[str, PayloadNode] = {root_node.node_id: root_node}
+    edges: list[ProvenanceStep] = []
+    seen_hashes: dict[str, str] = {root_node.sha256: root_node.node_id}
+    primary_leaf_id = root_node.node_id
+
+    # Step A: Shell Normalizer pass
+    if root_node.depth < cfg.max_depth and len(nodes) < cfg.max_nodes:
+        norm_res = normalize_shell(root_node.text)
+        if norm_res.modified:
+            child_node = PayloadNode(
+                node_id=f"node_{len(nodes)}",
+                text=norm_res.normalized_text,
+                depth=root_node.depth + 1,
+                parent_id=root_node.node_id,
+                technique="shell_normalizer",
+                parameters={
+                    "passes": norm_res.applied_passes,
+                    "resolved_env_vars": norm_res.resolved_env_vars,
+                },
+                is_reconstructed_command=True,
+            )
+            if child_node.sha256 not in seen_hashes:
+                seen_hashes[child_node.sha256] = child_node.node_id
+                nodes[child_node.node_id] = child_node
+                edges.append(
+                    ProvenanceStep(
+                        parent_id=root_node.node_id,
+                        child_id=child_node.node_id,
+                        technique="shell_normalizer",
+                        parameters=dict(child_node.parameters),
+                    )
+                )
+                primary_leaf_id = child_node.node_id
+
     dag = UnpackingDAG(
         root_id=root_node.node_id,
-        nodes={root_node.node_id: root_node},
-        edges=[],
-        primary_leaf_id=root_node.node_id,
+        nodes=nodes,
+        edges=edges,
+        primary_leaf_id=primary_leaf_id,
     )
     return dag
 

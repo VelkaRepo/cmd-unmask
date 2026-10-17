@@ -12,12 +12,14 @@ from cmd_unmask.models import (
     TriageVerdict,
     UnpackingDAG,
 )
+from cmd_unmask.normalizer import NormalizationResult, normalize, normalize_shell
 from cmd_unmask.unpacker import unmask_command, unpack_dag
 
 __all__ = [
     "BehavioralMatch",
     "ExtractedIOC",
     "IngestionRecord",
+    "NormalizationResult",
     "PayloadNode",
     "ProvenanceStep",
     "Severity",
@@ -26,6 +28,8 @@ __all__ = [
     "UnpackingDAG",
     "ingest_single_command",
     "ingest_source",
+    "normalize",
+    "normalize_shell",
     "unescape_siem_wrapper",
     "unmask_command",
     "unpack_dag",
