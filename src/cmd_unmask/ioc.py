@@ -14,7 +14,7 @@ _URL_RE = re.compile(
 )
 
 _NAMED_PIPE_RE = re.compile(
-    r"(\\\\\\[^\s\\\"']+\\\\pipe\\\\[^\s\"'<>|;&,)]+)",
+    r"(\\[^\s\\\"']+\\pipe\\[^\s\"'<>|;&,)]+)",
     re.IGNORECASE,
 )
 

@@ -10,6 +10,7 @@ import zlib
 from collections import deque
 from typing import Any
 
+from cmd_unmask.classifier import classify_dag, classify_node_text, score_verdict
 from cmd_unmask.ioc import extract_iocs, extract_iocs_from_text
 from cmd_unmask.models import (
     PayloadNode,
@@ -199,10 +200,11 @@ def _rank_leaf_node(node: PayloadNode) -> tuple[int, int, int, float]:
     """Compute deterministic ranking tuple for selecting the Primary Unmasked Payload."""
     anchor_hits = len(_XOR_ANCHOR_RE.findall(node.text))
     ioc_hits = len(extract_iocs_from_text(node.text, source_node_id=node.node_id))
+    behavior_hits = len(classify_node_text(node.text, source_node_id=node.node_id))
     return (
         1 if node.is_reconstructed_command else 0,
         node.depth,
-        anchor_hits + ioc_hits,
+        anchor_hits + ioc_hits + behavior_hits,
         node.printable_ratio,
     )
 
@@ -591,6 +593,8 @@ def unmask_command(
         primary_node = dag.nodes[dag.primary_leaf_id]
         leaves = [n.text for n in dag.get_leaf_nodes()]
         harvested_iocs = extract_iocs(dag)
+        behaviors = classify_dag(dag)
+        risk_score, severity = score_verdict(dag, behaviors, harvested_iocs)
 
         return TriageVerdict(
             source_id=source_id,
@@ -600,8 +604,9 @@ def unmask_command(
             provenance_chain=dag.get_provenance_chain(dag.primary_leaf_id),
             leaf_payloads=leaves,
             iocs=harvested_iocs,
-            risk_score=0,
-            severity=Severity.BENIGN,
+            behavioral_matches=behaviors,
+            risk_score=risk_score,
+            severity=severity,
             warnings=warnings,
         )
     except Exception as exc:  # Defensive fallback per engineering standards
