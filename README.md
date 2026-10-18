@@ -60,7 +60,7 @@ During live L1/L2 alert triage, every minute spent manually baking CyberChef rec
 
 ## 🚀 30-Second Quickstart
 
-`cmd-unmask` requires Python `>= 3.11` and installs with **zero third-party packages**:
+`cmd-unmask` requires Python `>= 3.10` and installs with **zero third-party packages**:
 
 ```bash
 git clone https://github.com/VelkaRepo/cmd-unmask.git
