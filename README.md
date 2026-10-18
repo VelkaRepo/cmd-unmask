@@ -76,6 +76,7 @@ Tier-1 and Tier-2 SOC analysts triaging process-creation alerts across SIEM and 
   - [ADR-0005: Full-DAG IOC Harvesting and Dual-Stage Behavioral Intent Scoring](docs/adr/0005-full-dag-ioc-harvesting-and-intent-scoring.md)
   - [ADR-0006: Interleaved Node Processing Cycle and Deterministic Primary Leaf Ranking](docs/adr/0006-interleaved-node-processing-and-leaf-ranking.md)
   - [ADR-0007: Contextual IOC Validation to Suppress Namespace and Hex-Blob False Positives](docs/adr/0007-contextual-ioc-false-positive-suppression.md)
+  - [ADR-0008: Operator UX, Win32 Clipboard Ingestion, and Layer-by-Layer Timeline Rendering](docs/adr/0008-operator-ux-clipboard-ingestion-and-timeline-rendering.md)
 
 ---
 

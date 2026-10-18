@@ -1,0 +1,3 @@
+# Operator UX, Win32 Clipboard Ingestion, and Layer-by-Layer Timeline Rendering
+
+To prevent local EDR and AMSI agents from blocking SOC analysts when passing raw obfuscated stagers as CLI arguments, `cmd-unmask` supports direct OS clipboard ingestion (`-p` / `--paste`), interactive TTY fallback, and clipboard ticket-note export (`--copy-note`) implemented via Python's built-in `ctypes` Win32 API (`user32` / `kernel32` `CF_UNICODETEXT`) with OS CLI fallbacks. Furthermore, the default terminal renderer (`--format pretty`) translates internal Unpacking DAG node transitions (`node_0 -> node_1`) into a human-readable `Step 0..N` Unmasking Timeline and a borderless, copy-paste-ready SOC Ticket Note block using 100% standard-library ANSI sequences.
