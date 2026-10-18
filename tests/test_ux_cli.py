@@ -35,10 +35,26 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         self.assertIn("Base64 UTF-16LE Decoded", out)
         self.assertIn(inner, out)
 
-        # No raw internal graph IDs in pretty output
+        # No raw internal graph IDs or '(from Layer N' labels in pretty output
         self.assertNotIn("node_0 -> node_1", out)
+        self.assertNotIn("(from Layer ", out)
         # No ANSI escape codes when --no-color is passed
         self.assertNotIn("\x1b[", out)
+
+        # Section [4] uses clean horizontal dividers without left vertical border characters
+        sec4 = out.split("[4] READY-TO-PASTE SOC TICKET NOTE")[1]
+        self.assertIn("────────", sec4)
+        self.assertNotIn("│", sec4)
+        self.assertNotIn("┌", sec4)
+        self.assertNotIn("└", sec4)
+        # Raw command (>90 chars) is truncated in the ticket note
+        self.assertIn(f"chars total)", sec4)
+        # Unmasked Cmd is on its own indented line
+        self.assertIn(f"Unmasked Cmd  :\n  powershell.exe -NoP -W Hidden -c {inner}", sec4)
+        # Multi-line bullet lists for IOCs and MITRE ATT&CK
+        self.assertIn("  - [URL] hxxp://c2[.]evil[.]example[:]8080/stage.ps1", sec4)
+        self.assertIn("  - [DOMAIN] c2[.]evil[.]example", sec4)
+        self.assertIn("  - T1059.001 : ", sec4)
 
     def test_url_authority_domain_extracted_as_separate_domain_ioc(self) -> None:
         verdict = unmask_command(

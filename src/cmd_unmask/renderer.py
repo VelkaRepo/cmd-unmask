@@ -53,7 +53,7 @@ def build_unmasking_timeline(verdict: TriageVerdict) -> tuple[list[tuple[int, st
     for nid, node in verdict.dag.nodes.items():
         if nid not in node_labels:
             lbl = format_technique_label(node.technique, node.parameters)
-            node_labels[nid] = f"Layer {node.depth} [{lbl}]"
+            node_labels[nid] = f"Step {node.depth} [{lbl}]"
 
     return timeline, node_labels
 
@@ -72,28 +72,33 @@ def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True) -> str:
     applied_steps = [lbl for idx, lbl, _ in timeline if idx > 0]
     unmask_summary = " -> ".join(applied_steps) if applied_steps else "None (Unobfuscated)"
 
+    raw_cmd = verdict.original_command
+    if len(raw_cmd) > 90:
+        raw_display = f"{raw_cmd[:87]}... ({len(raw_cmd)} chars total)"
+    else:
+        raw_display = raw_cmd
+
     lines: list[str] = [
         f"[SOC TRIAGE NOTE - {verdict.source_id}]",
         f"Verdict       : {verdict.severity.value} (Risk Score: {verdict.risk_score}/100)",
         f"Obfuscation   : {unmask_summary}",
-        f"Raw Command   : {verdict.original_command}",
-        f"Unmasked Cmd  : {verdict.primary_unmasked_payload}",
+        f"Raw Command   : {raw_display}",
+        "Unmasked Cmd  :",
+        f"  {verdict.primary_unmasked_payload}",
     ]
 
     if verdict.iocs:
-        ioc_parts = [
-            f"{i.ioc_type.upper()}={i.defanged_value if defang else i.raw_value}"
-            for i in verdict.iocs
-        ]
-        lines.append(f"Extracted IOCs: {', '.join(ioc_parts)}")
+        lines.append("Extracted IOCs:")
+        for i in verdict.iocs:
+            val = i.defanged_value if defang else i.raw_value
+            lines.append(f"  - [{i.ioc_type.upper()}] {val}")
     else:
         lines.append("Extracted IOCs: None")
 
     if verdict.behavioral_matches:
-        mitre_parts = [
-            f"{m.mitre_id} ({m.name})" for m in verdict.behavioral_matches
-        ]
-        lines.append(f"MITRE ATT&CK  : {', '.join(mitre_parts)}")
+        lines.append("MITRE ATT&CK  :")
+        for m in verdict.behavioral_matches:
+            lines.append(f"  - {m.mitre_id} : {m.name} ({m.tactic})")
     else:
         lines.append("MITRE ATT&CK  : None")
 
@@ -190,10 +195,11 @@ def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: boo
 
         lines.append("")
         lines.append(f"{c_bold}{c_cyan}[4] READY-TO-PASTE SOC TICKET NOTE{c_reset}")
-        lines.append("  ┌──────────────────────────────────────────────────────────────────")
+        divider = "─" * 68
+        lines.append(f"{c_dim}{divider}{c_reset}")
         for note_line in build_soc_ticket_note(verdict, defang=defang).splitlines():
-            lines.append(f"  │ {note_line}")
-        lines.append("  └──────────────────────────────────────────────────────────────────")
+            lines.append(note_line)
+        lines.append(f"{c_dim}{divider}{c_reset}")
 
         blocks.append("\n".join(lines))
 
