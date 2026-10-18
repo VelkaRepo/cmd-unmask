@@ -1,10 +1,16 @@
+<div align="center">
+
 # 🛡️ cmd-unmask
 
-> **Static Command-Line De-Obfuscation & Behavioral Triage Tracer Script**
+**Static Command-Line De-Obfuscation & Behavioral Triage Tracer Script**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Tests](https://img.shields.io/badge/tests-42%20passed-success.svg)](#)
+
+[Install](#installation) · [Usage](#usage) · [How it works](#how-it-works) · [Limitations](#limitations)
+
+</div>
 
 **cmd-unmask** is an open-source static command-line de-obfuscation and behavioral triage Tracer Script designed for cyber defense teams, SOC analysts, and detection engineers. It peels multi-layered command-line obfuscation (`cmd.exe` / PowerShell / Bash), extracts and defangs Indicators of Compromise (IOCs), maps suspicious execution patterns to MITRE ATT&CK, and generates ready-to-paste SOC ticket notes in milliseconds—100% static, offline, and zero-dependency.
 
@@ -58,6 +64,7 @@ During live L1/L2 alert triage, every minute spent manually baking CyberChef rec
 
 ---
 
+<a id="installation"></a>
 ## 🚀 30-Second Quickstart
 
 `cmd-unmask` requires Python `>= 3.10` and installs with **zero third-party packages**:
@@ -68,6 +75,7 @@ cd cmd-unmask
 pip install -e .
 ```
 
+<a id="usage"></a>
 ### 1. Clipboard & Interactive Mode (Avoids Local CLI Inspection Blocks)
 Passing raw malicious stagers directly as command-line arguments (`-c "powershell -enc ..."`) often triggers local Windows Defender / SentinelOne CLI blocks (`Access is denied`). Ingesting directly from the OS clipboard avoids exposing the payload in the process argument list. Copy the alert command from your SIEM and run:
 
@@ -117,6 +125,7 @@ cmd-unmask -f qradar_offense.json --field CustomProcessCmd --fail-on HIGH
 
 ---
 
+<a id="how-it-works"></a>
 ## 🏗️ Architecture & Design Decisions
 
 `cmd-unmask` processes commands through a deterministic 4-pillar pipeline: Ingestion Pipeline & Shell Normalization, Bounded Interleaved Unpacking DAG & Expression Resolution, Full-DAG Contextual IOC Extraction & Defanging, and MITRE ATT&CK Behavioral Classification.
@@ -137,6 +146,7 @@ See the complete [Four-Pillar Architecture Diagram](docs/architecture.md#four-pi
 
 ---
 
+<a id="limitations"></a>
 ## 🧪 Verification & Test Suite
 
 Run the full unit and integration test suite (42 tests covering DOSfuscation, expression folding, multi-layer DAG unpacking, zip-bomb ceilings, IOC false-positive suppression, MITRE classification, and CLI UX) via Python's built-in `unittest` discovery:
