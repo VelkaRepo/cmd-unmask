@@ -1,20 +1,12 @@
-<div align="center">
+# 🛡️ cmd-unmask
 
-```text
-                     __                                       __   
-  _________ ___  ___/ /     __  ______  ____ ___  ____ ______/ /__ 
- / ___/ __ `__ \/ __  /_____/ / / / __ \/ __ `__ \/ __ `/ ___/ //_/ 
-/ /__/ / / / / / /_/ /_____/ /_/ / / / / / / / / / /_/ (__  ) ,<    
-\___/_/ /_/ /_/\__,_/      \__,_/_/ /_/_/ /_/ /_/\__,_/____/_/|_|   
-```
+> **Static Command-Line De-Obfuscation & Behavioral Triage Tracer Script**
 
-### Static Command-Line De-Obfuscation & Behavioral Triage Tracer Script
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-*"Stop alt-tabbing to CyberChef for every obfuscated SIEM offense. Peel multi-layered command lines, extract defanged IOCs, and generate ready-to-paste SOC ticket notes in milliseconds—100% static, offline, and zero-dependency."*
-
-[**Why cmd-unmask?**](#-why-cmd-unmask) • [**30-Second Quickstart**](#-30-second-quickstart) • [**Live Terminal Output**](#-live-terminal-output) • [**4-Pillar Architecture**](#-architecture--design-decisions) • [**SIEM Batch Triage**](#-batch-siem--edr-ingestion)
-
-</div>
+**cmd-unmask** is an open-source static command-line de-obfuscation and behavioral triage framework designed for cyber defense teams, SOC analysts, and detection engineers. It peels multi-layered command-line obfuscation (`cmd.exe` / PowerShell / Bash), extracts and defangs Indicators of Compromise (IOCs), maps suspicious execution patterns to MITRE ATT&CK, and generates ready-to-paste SOC ticket notes in milliseconds—100% static, offline, and zero-dependency.
 
 ---
 
