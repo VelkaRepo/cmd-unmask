@@ -15,6 +15,14 @@ from cmd_unmask.models import (
     UnpackingDAG,
 )
 from cmd_unmask.normalizer import NormalizationResult, normalize, normalize_shell
+from cmd_unmask.renderer import (
+    build_soc_ticket_note,
+    build_unmasking_timeline,
+    render_json,
+    render_jsonl,
+    render_markdown,
+    render_pretty,
+)
 from cmd_unmask.resolver import ExpressionResolutionResult, resolve_expression_node, resolve_expressions
 from cmd_unmask.unpacker import unmask_command, unpack_dag
 
@@ -29,6 +37,8 @@ __all__ = [
     "TriageConfig",
     "TriageVerdict",
     "UnpackingDAG",
+    "build_soc_ticket_note",
+    "build_unmasking_timeline",
     "classify_dag",
     "classify_node_text",
     "defang_ioc",
@@ -39,6 +49,10 @@ __all__ = [
     "ExpressionResolutionResult",
     "normalize",
     "normalize_shell",
+    "render_json",
+    "render_jsonl",
+    "render_markdown",
+    "render_pretty",
     "resolve_expression_node",
     "resolve_expressions",
     "score_verdict",

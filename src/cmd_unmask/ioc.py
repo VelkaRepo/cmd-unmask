@@ -340,7 +340,7 @@ def extract_iocs_from_text(
     occupied_spans: list[tuple[int, int]] = []
     hex_skip = {h.lower() for h in (decoded_hex_blobs or set())}
 
-    # 1. URLs
+    # 1. URLs (plus authority hostname/IP extraction)
     for m in _URL_RE.finditer(text):
         raw_url = m.group(1).rstrip(",.;'\")>]")
         end_pos = m.start(1) + len(raw_url)
@@ -353,6 +353,42 @@ def extract_iocs_from_text(
                 source_node_id=source_node_id,
             )
         )
+        try:
+            host = urlsplit(raw_url).hostname
+        except Exception:
+            host = None
+        if host:
+            try:
+                ipaddress.IPv4Address(host)
+                results.append(
+                    ExtractedIOC(
+                        ioc_type="ipv4",
+                        raw_value=host,
+                        defanged_value=defang_ioc("ipv4", host),
+                        source_node_id=source_node_id,
+                    )
+                )
+            except ValueError:
+                try:
+                    ipaddress.IPv6Address(host)
+                    results.append(
+                        ExtractedIOC(
+                            ioc_type="ipv6",
+                            raw_value=host,
+                            defanged_value=defang_ioc("ipv6", host),
+                            source_node_id=source_node_id,
+                        )
+                    )
+                except ValueError:
+                    if "." in host:
+                        results.append(
+                            ExtractedIOC(
+                                ioc_type="domain",
+                                raw_value=host,
+                                defanged_value=defang_ioc("domain", host),
+                                source_node_id=source_node_id,
+                            )
+                        )
 
     # 2. Named Pipes (before filepaths)
     for m in _NAMED_PIPE_RE.finditer(text):
