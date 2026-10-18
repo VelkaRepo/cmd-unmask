@@ -15,9 +15,9 @@ class TestQuoteAwareShellNormalizer(unittest.TestCase):
     def test_cmd_canonical_env_vars_and_slices(self) -> None:
         # COMSPEC = C:\Windows\System32\cmd.exe (length 27)
         # :~-7,3 -> cmd ; :~-3 -> exe
-        raw = "%COMSPEC:~-7,3%.%COMSPEC:~-3% /c %windir%\System32\whoami.exe"
+        raw = r"%COMSPEC:~-7,3%.%COMSPEC:~-3% /c %windir%\System32\whoami.exe"
         res = normalize_shell(raw)
-        self.assertEqual(res.normalized_text.lower(), "cmd.exe /c c:\windows\system32\whoami.exe")
+        self.assertEqual(res.normalized_text.lower(), r"cmd.exe /c c:\windows\system32\whoami.exe")
         self.assertTrue(res.modified)
 
     def test_cmd_inline_set_variable_and_slicing(self) -> None:
@@ -35,7 +35,7 @@ class TestQuoteAwareShellNormalizer(unittest.TestCase):
         self.assertTrue(res.modified)
 
     def test_benign_command_remains_unchanged(self) -> None:
-        benign = "powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\admin\check.ps1"
+        benign = r"powershell.exe -NoProfile -ExecutionPolicy Bypass -File C:\admin\check.ps1"
         res = normalize_shell(benign)
         self.assertEqual(res.normalized_text, benign)
         self.assertFalse(res.modified)
