@@ -57,10 +57,15 @@ During live L1/L2 alert triage, every minute spent manually baking CyberChef rec
 | **SOC Offense Ticket Formatting** | **Instant (`--copy-note`)** | Manual typing & defanging | Raw text dump | Heavy PDF/JSON report |
 | **Runtime Dependencies** | **Zero (Python 3 Stdlib)** | Browser required | Varies (`pip` bloat) | Heavy VM / Docker stack |
 
-### What It Peels Automatically
-- **Shell-Level DOSfuscation**: `cmd.exe` caret (`^`) insertion, empty quote pairs (`""`), `%ComSpec%` and environment variable substring slicing (`%var:~offset,len%`), and PowerShell backtick (`` ` ``) noise outside single-quoted literals.
-- **Static Expression Obfuscation**: PowerShell format operators (`"{1}{0}" -f`), `[char]` / `[char[]]` casting, `-join` / `[string]::Join`, case-sensitive `.Replace()` vs. case-insensitive `-replace`, string reversal, and Bash ANSI-C quoting (`$'\x63\x75\x72\x6c'`) or `${var//a/b}` parameter expansion.
-- **Multi-Layer Payload Encoding & Compression**: Unpadded or URL-safe Base64 (`-enc`), UTF-16LE vs. UTF-8 byte streams, `IO.Compression.GzipStream` / `DeflateStream` payloads (with 32MB zip-bomb protection), hex blobs, URL percent-encoding, `fromCharCode` arrays, and single-byte XOR loops.
+## ✨ Key Features
+
+- 🔄 **Two-Pass Shell Normalization**: Strips `cmd.exe` carets (`^`), empty quotes (`""`), `%var:~offset,len%` slices, and PowerShell backticks (`` ` ``) without corrupting quoted literals.
+- 🧩 **Static Expression Folding**: Resolves PowerShell format operators (`-f`), `[char]` casts, `-join`, `.Replace()` / `-replace`, string concatenation, and Bash ANSI-C quoting (`$'\x..'`).
+- 🌲 **Bounded Interleaved Unpacking DAG**: Explores nested payloads via BFS (`max_depth=10`, `max_nodes=32`) decoding Base64, Gzip, Deflate (32MB ceiling), Hex, URL, CharCode, and gated XOR.
+- 🛡️ **Contextual IOC Extraction & Defanging**: Full-DAG harvesting of URLs, domains, IPs, file paths, and hashes with `.NET` namespace false-positive suppression and automatic defanging.
+- 🎯 **MITRE ATT&CK Behavioral Scoring**: Dual-stage risk scoring (0–100) mapping unmasked payloads and LOLBins (`certutil`, `mshta`, `rundll32`, `wmic`, `bits`) to MITRE techniques.
+- 📋 **Frictionless Clipboard & Batch Ingestion**: Direct OS clipboard triage (`-p`, `--copy-note`), interactive TTY prompt, and automated SIEM log parsing (JSON, JSONL, text).
+- 🪶 **Zero External Dependencies**: Built 100% on Python standard library (`>= 3.10`), offline and air-gap safe with strictly zero dynamic execution (`eval`/`exec`).
 
 ---
 
