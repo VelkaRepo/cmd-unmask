@@ -6,7 +6,7 @@
 [![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**cmd-unmask** is an open-source static command-line de-obfuscation and behavioral triage framework designed for cyber defense teams, SOC analysts, and detection engineers. It peels multi-layered command-line obfuscation (`cmd.exe` / PowerShell / Bash), extracts and defangs Indicators of Compromise (IOCs), maps suspicious execution patterns to MITRE ATT&CK, and generates ready-to-paste SOC ticket notes in milliseconds—100% static, offline, and zero-dependency.
+**cmd-unmask** is an open-source static command-line de-obfuscation and behavioral triage Tracer Script designed for cyber defense teams, SOC analysts, and detection engineers. It peels multi-layered command-line obfuscation (`cmd.exe` / PowerShell / Bash), extracts and defangs Indicators of Compromise (IOCs), maps suspicious execution patterns to MITRE ATT&CK, and generates ready-to-paste SOC ticket notes in milliseconds—100% static, offline, and zero-dependency.
 
 ---
 
@@ -46,7 +46,7 @@ During live L1/L2 alert triage, every minute spent manually baking CyberChef rec
 | **Multi-Layer Interleaving** (`^` + `-enc` + `Gzip` + `-f`) | **Automatic BFS DAG** | Manual recipe chaining | Fails on nested layers | Unpacks only if executed |
 | **Data Sovereignty / Air-Gap Safe** | **100% Offline CLI** | Browser tab / copy-paste risk | Local | Often cloud-hosted |
 | **Execution Safety on Analyst Host** | **100% Static (Zero `eval`)** | Safe | Safe | **High risk if run locally** |
-| **Workstation EDR CLI Block Bypass** | **Native `-p` Clipboard Mode** | N/A | Blocked by local AMSI/EDR | Blocked by local AMSI/EDR |
+| **Workstation CLI Argument Safety** | **Native `-p` Clipboard Mode** | N/A | Blocked by local AMSI/EDR | Blocked by local AMSI/EDR |
 | **`.NET` Namespace False-Positive Suppression** | **Contextual IOC Gate** | Extracts `[Net.WebClient]` as domain | Massive False Positives | N/A |
 | **SOC Offense Ticket Formatting** | **Instant (`--copy-note`)** | Manual typing & defanging | Raw text dump | Heavy PDF/JSON report |
 | **Runtime Dependencies** | **Zero (Python 3 Stdlib)** | Browser required | Varies (`pip` bloat) | Heavy VM / Docker stack |
@@ -68,8 +68,8 @@ cd cmd-unmask
 pip install -e .
 ```
 
-### 1. Clipboard & Interactive Mode (Bypasses Local EDR CLI Blocks)
-Passing raw malicious stagers directly on an analyst workstation command line (`-c "powershell -enc ..."`) often triggers local Windows Defender / SentinelOne CLI blocks (`Access is denied`). Copy the alert command from your SIEM and run:
+### 1. Clipboard & Interactive Mode (Avoids Local CLI Inspection Blocks)
+Passing raw malicious stagers directly as command-line arguments (`-c "powershell -enc ..."`) often triggers local Windows Defender / SentinelOne CLI blocks (`Access is denied`). Ingesting directly from the OS clipboard avoids exposing the payload in the process argument list. Copy the alert command from your SIEM and run:
 
 ```bash
 # Read obfuscated command from OS clipboard, print full analysis, and copy the SOC Ticket Note back to clipboard
