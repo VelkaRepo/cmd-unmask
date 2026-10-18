@@ -178,6 +178,18 @@ See the complete [Four-Pillar Architecture Diagram](docs/architecture.md#four-pi
 ---
 
 <a id="limitations"></a>
+## ⚠️ Limitations
+
+While `cmd-unmask` is engineered for high detection rigidity and deep static unpacking, several architectural trade-offs apply:
+
+- **100% Static Analysis Only**: `cmd-unmask` never executes untrusted code, spawns child shells, or calls dynamic evaluators (`eval()` / `exec()`). Commands that depend on live network responses, remote C2 stagers, or runtime host state cannot be dynamically completed ([ADR-0001](docs/adr/0001-static-stdlib-only-analysis.md)).
+- **Runtime-Built Payloads Unresolved**: Payloads assembled through complex runtime logic, JIT compilation, or programmatic variable assembly requiring an active PowerShell/Bash interpreter are not dynamically evaluated.
+- **Single-Byte XOR Only**: Heuristic XOR brute-forcing is restricted to single-byte keys (`0x01`–`0xFF`) gated by entropy and anchor thresholds. Multi-byte XOR keys or stream ciphers are not recovered unless the key or operator is explicitly present in the static command syntax ([ADR-0003](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md)).
+- **Bounded Unpacking DAG**: To prevent resource exhaustion, the Unpacking DAG enforces deterministic bounds: maximum depth of 10 (`max_depth = 10`), maximum of 64 nodes (`max_nodes = 64`), and a 3.0-second per-command timeout ([ADR-0003](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md), [ADR-0006](docs/adr/0006-interleaved-node-processing-and-leaf-ranking.md)).
+- **Decompression Ceiling**: Gzip and Deflate streams enforce a strict 256 KB chunked decompression limit (`max_stream_bytes = 262,144`) to protect analyst endpoints against zip-bombs ([ADR-0003](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md)).
+
+---
+
 ## 🧪 Verification & Test Suite
 
 Run the full unit and integration test suite (42 tests covering DOSfuscation, expression folding, multi-layer DAG unpacking, zip-bomb ceilings, IOC false-positive suppression, MITRE classification, and CLI UX) via Python's built-in `unittest` discovery:
