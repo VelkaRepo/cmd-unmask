@@ -13,6 +13,7 @@ from cmd_unmask.models import (
     UnpackingDAG,
 )
 from cmd_unmask.normalizer import NormalizationResult, normalize, normalize_shell
+from cmd_unmask.resolver import ExpressionResolutionResult, resolve_expression_node, resolve_expressions
 from cmd_unmask.unpacker import unmask_command, unpack_dag
 
 __all__ = [
@@ -28,8 +29,11 @@ __all__ = [
     "UnpackingDAG",
     "ingest_single_command",
     "ingest_source",
+    "ExpressionResolutionResult",
     "normalize",
     "normalize_shell",
+    "resolve_expression_node",
+    "resolve_expressions",
     "unescape_siem_wrapper",
     "unmask_command",
     "unpack_dag",

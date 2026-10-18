@@ -11,6 +11,7 @@ from cmd_unmask.models import (
     UnpackingDAG,
 )
 from cmd_unmask.normalizer import normalize_shell
+from cmd_unmask.resolver import resolve_expression_node
 
 
 def unpack_dag(command_text: str, config: TriageConfig | None = None) -> UnpackingDAG:
@@ -56,6 +57,36 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
                     )
                 )
                 primary_leaf_id = child_node.node_id
+
+    # Step B: Static Expression Resolver pass
+    current_node = nodes[primary_leaf_id]
+    if current_node.depth < cfg.max_depth and len(nodes) < cfg.max_nodes:
+        expr_res = resolve_expression_node(current_node.text)
+        if expr_res.modified:
+            expr_child = PayloadNode(
+                node_id=f"node_{len(nodes)}",
+                text=expr_res.resolved_text,
+                depth=current_node.depth + 1,
+                parent_id=current_node.node_id,
+                technique="expression_resolver",
+                parameters={
+                    "passes_run": expr_res.passes_run,
+                    "reducers": expr_res.applied_reducers,
+                },
+                is_reconstructed_command=True,
+            )
+            if expr_child.sha256 not in seen_hashes:
+                seen_hashes[expr_child.sha256] = expr_child.node_id
+                nodes[expr_child.node_id] = expr_child
+                edges.append(
+                    ProvenanceStep(
+                        parent_id=current_node.node_id,
+                        child_id=expr_child.node_id,
+                        technique="expression_resolver",
+                        parameters=dict(expr_child.parameters),
+                    )
+                )
+                primary_leaf_id = expr_child.node_id
 
     dag = UnpackingDAG(
         root_id=root_node.node_id,
