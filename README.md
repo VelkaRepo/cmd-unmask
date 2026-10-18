@@ -197,3 +197,30 @@ Run the full unit and integration test suite (42 tests covering DOSfuscation, ex
 ```bash
 python -m unittest discover -s tests -v
 ```
+
+---
+
+## 🗺️ Roadmap
+
+- [ ] **Expanded LOLBin Coverage**: Additional living-off-the-land utilities across Linux and macOS environments.
+- [ ] **Sigma Rule Generation**: Automatically generate draft Sigma detection rules from identified MITRE ATT&CK behaviors.
+- [ ] **PE/ELF Header Carving**: Direct carving and hashing of embedded portable executables and shellcode buffers.
+- [ ] **SOAR / Webhook Formatter**: Native JSON alert formatting tailored for automated SOAR ingestion pipelines.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please adhere to the following engineering standards:
+1. **Zero External Dependencies**: Keep all implementation code strictly within the Python standard library.
+2. **Defensive Error Handling**: Ensure no malformed artifact or corrupt log can cause an unhandled exception or crash.
+3. **Test-Driven Verification**: Add unit tests under `tests/` for any new decoder, normalizer rule, or IOC extractor, and ensure the test suite passes before submitting:
+   ```bash
+   python -m unittest discover -s tests -v
+   ```
+
+---
+
+## 🔒 Security
+
+`cmd-unmask` is strictly an on-demand static analysis Tracer Script. It **never** executes input command lines, spawns child shells (`cmd.exe`, `powershell.exe`, `bash`), or invokes dynamic evaluation engines (`eval()`, `exec()`). All string reductions, Base64 decodings, and decompression steps operate through pure memory and standard-library data parsing with bounded resource ceilings, ensuring that analysts can safely inspect live, untrusted, or potentially destructive stagers on restricted workstations ([ADR-0001](docs/adr/0001-static-stdlib-only-analysis.md)).
