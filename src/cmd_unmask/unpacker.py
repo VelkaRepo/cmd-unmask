@@ -10,6 +10,7 @@ import zlib
 from collections import deque
 from typing import Any
 
+from cmd_unmask.ioc import extract_iocs, extract_iocs_from_text
 from cmd_unmask.models import (
     PayloadNode,
     ProvenanceStep,
@@ -197,10 +198,11 @@ def _try_fallback_xor_bruteforce(raw_bytes: bytes) -> tuple[str, int] | None:
 def _rank_leaf_node(node: PayloadNode) -> tuple[int, int, int, float]:
     """Compute deterministic ranking tuple for selecting the Primary Unmasked Payload."""
     anchor_hits = len(_XOR_ANCHOR_RE.findall(node.text))
+    ioc_hits = len(extract_iocs_from_text(node.text, source_node_id=node.node_id))
     return (
         1 if node.is_reconstructed_command else 0,
         node.depth,
-        anchor_hits,
+        anchor_hits + ioc_hits,
         node.printable_ratio,
     )
 
@@ -588,6 +590,7 @@ def unmask_command(
         warnings.extend(dag.warnings)
         primary_node = dag.nodes[dag.primary_leaf_id]
         leaves = [n.text for n in dag.get_leaf_nodes()]
+        harvested_iocs = extract_iocs(dag)
 
         return TriageVerdict(
             source_id=source_id,
@@ -596,6 +599,7 @@ def unmask_command(
             dag=dag,
             provenance_chain=dag.get_provenance_chain(dag.primary_leaf_id),
             leaf_payloads=leaves,
+            iocs=harvested_iocs,
             risk_score=0,
             severity=Severity.BENIGN,
             warnings=warnings,

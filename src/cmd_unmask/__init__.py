@@ -1,6 +1,7 @@
 """cmd-unmask: Static command-line de-obfuscation and behavioral triage Tracer Script."""
 
 from cmd_unmask.ingestion import ingest_single_command, ingest_source, unescape_siem_wrapper
+from cmd_unmask.ioc import defang_ioc, extract_iocs, extract_iocs_from_text
 from cmd_unmask.models import (
     BehavioralMatch,
     ExtractedIOC,
