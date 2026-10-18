@@ -19,19 +19,13 @@ _CHAR_CAST_RE = re.compile(
 
 # [char[]](105, 101, 120) -join ''
 _CHAR_ARRAY_JOIN_RE = re.compile(
-    rf"\(?\s*\[\s*char\s*\[\s*\]\s*\]\s*\(\s*((?:(?:0x[0-9a-fA-F]+|\d+)\s*,?\s*)+)\)\s*\)?\s*-join\s*({_QUOTED_STR_PAT})?",
+    rf"\(?\s*\[\s*char\s*\[\s*\]\s*\]\s*\(\s*([0-9a-fA-FxX,\s]+)\)\s*\)?\s*-join\s*({_QUOTED_STR_PAT})?",
     re.IGNORECASE,
 )
 
-# (105,101,120) | % { [char]$_ } or ForEach-Object
-_PIPE_CHAR_FOREACH_RE = re.compile(
-    r"\(\s*((?:(?:0x[0-9a-fA-F]+|\d+)\s*,?\s*)+)\)\s*\|\s*(?:%|ForEach-Object|foreach)\s*\{\s*\[\s*char\s*\]\s*\$_\s*\}",
-    re.IGNORECASE,
-)
-
-# [string]::Join('sep', ('a', 'b', 'c')) or [string]::Join('sep', [char[]](105, 101, 120))
+# [string]::Join('sep', ('a', 'b', 'c'))
 _STRING_JOIN_STATIC_RE = re.compile(
-    rf"\[\s*(?:system\.)?string\s*\]::join\s*\(\s*({_QUOTED_STR_PAT})\s*,\s*\(?\s*((?:{_QUOTED_STR_PAT}\s*,?\s*)+)\)?\s*\)",
+    rf"\[\s*(?:system\.)?string\s*\]::join\s*\(\s*({_QUOTED_STR_PAT})\s*,\s*\(?\s*({_QUOTED_STR_PAT}(?:\s*,\s*{_QUOTED_STR_PAT})*)\s*\)?\s*\)",
     re.IGNORECASE,
 )
 
@@ -237,9 +231,6 @@ def _fold_pass(text: str) -> tuple[str, set[str]]:
         return _quote_single(sep.join(chars))
 
     curr = _CHAR_ARRAY_JOIN_RE.sub(_repl_char_array_join, curr)
-    curr = _PIPE_CHAR_FOREACH_RE.sub(
-        lambda m: _repl_char_array_join(m) if False else m.group(0), curr
-    )
 
     # 4. [string]::Join('sep', ('a', 'b', 'c'))
     def _repl_string_join_static(m: re.Match[str]) -> str:
