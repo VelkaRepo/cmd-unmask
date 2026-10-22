@@ -235,6 +235,9 @@ _VALID_TLDS: frozenset[str] = frozenset(
     }
 )
 
+CLOUD_METADATA_ENDPOINTS: tuple[str, ...] = ("169.254.169.254",)
+CLOUD_METADATA_IPS: tuple[str, ...] = CLOUD_METADATA_ENDPOINTS
+
 
 def defang_ioc(ioc_type: str, raw_value: str) -> str:
     """Format a network/URL indicator into a safe Defanged IOC string."""
@@ -345,19 +348,22 @@ def extract_iocs_from_text(
         raw_url = m.group(1).rstrip(",.;'\")>]")
         end_pos = m.start(1) + len(raw_url)
         occupied_spans.append((m.start(1), end_pos))
+        try:
+            host = urlsplit(raw_url).hostname
+        except Exception:
+            host = None
+        is_meta_url = bool(host and host in CLOUD_METADATA_ENDPOINTS)
         results.append(
             ExtractedIOC(
                 ioc_type="url",
                 raw_value=raw_url,
                 defanged_value=defang_ioc("url", raw_url),
                 source_node_id=source_node_id,
+                is_cloud_metadata=is_meta_url,
             )
         )
-        try:
-            host = urlsplit(raw_url).hostname
-        except Exception:
-            host = None
         if host:
+            is_meta_host = host in CLOUD_METADATA_ENDPOINTS
             try:
                 ipaddress.IPv4Address(host)
                 results.append(
@@ -366,6 +372,7 @@ def extract_iocs_from_text(
                         raw_value=host,
                         defanged_value=defang_ioc("ipv4", host),
                         source_node_id=source_node_id,
+                        is_cloud_metadata=is_meta_host,
                     )
                 )
             except ValueError:
@@ -377,6 +384,7 @@ def extract_iocs_from_text(
                             raw_value=host,
                             defanged_value=defang_ioc("ipv6", host),
                             source_node_id=source_node_id,
+                            is_cloud_metadata=is_meta_host,
                         )
                     )
                 except ValueError:
@@ -387,6 +395,7 @@ def extract_iocs_from_text(
                                 raw_value=host,
                                 defanged_value=defang_ioc("domain", host),
                                 source_node_id=source_node_id,
+                                is_cloud_metadata=is_meta_host,
                             )
                         )
 
@@ -459,12 +468,14 @@ def extract_iocs_from_text(
         except ValueError:
             continue
         occupied_spans.append((m.start(1), m.end(1)))
+        is_meta_ip = cand in CLOUD_METADATA_ENDPOINTS
         results.append(
             ExtractedIOC(
                 ioc_type="ipv4",
                 raw_value=cand,
                 defanged_value=defang_ioc("ipv4", cand),
                 source_node_id=source_node_id,
+                is_cloud_metadata=is_meta_ip,
             )
         )
 

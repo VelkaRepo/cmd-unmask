@@ -2,7 +2,13 @@
 
 from cmd_unmask.classifier import classify_dag, classify_node_text, score_verdict
 from cmd_unmask.ingestion import ingest_single_command, ingest_source, unescape_siem_wrapper
-from cmd_unmask.ioc import defang_ioc, extract_iocs, extract_iocs_from_text
+from cmd_unmask.ioc import (
+    CLOUD_METADATA_ENDPOINTS,
+    CLOUD_METADATA_IPS,
+    defang_ioc,
+    extract_iocs,
+    extract_iocs_from_text,
+)
 from cmd_unmask.models import (
     BehavioralMatch,
     ExtractedIOC,
@@ -28,6 +34,8 @@ from cmd_unmask.unpacker import unmask_command, unpack_dag
 
 __all__ = [
     "BehavioralMatch",
+    "CLOUD_METADATA_ENDPOINTS",
+    "CLOUD_METADATA_IPS",
     "ExtractedIOC",
     "IngestionRecord",
     "NormalizationResult",

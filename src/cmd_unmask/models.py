@@ -171,6 +171,11 @@ class ExtractedIOC:
     raw_value: str
     defanged_value: str
     source_node_id: str
+    is_cloud_metadata: bool = False
+
+    @property
+    def is_metadata_endpoint(self) -> bool:
+        return self.is_cloud_metadata
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -178,6 +183,7 @@ class ExtractedIOC:
             "raw_value": self.raw_value,
             "defanged_value": self.defanged_value,
             "source_node_id": self.source_node_id,
+            "is_cloud_metadata": self.is_cloud_metadata,
         }
 
 
