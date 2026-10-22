@@ -190,8 +190,9 @@ def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: boo
         if verdict.warnings:
             lines.append("")
             lines.append(f"{c_bold}{c_yellow}[!] DIAGNOSTIC WARNINGS{c_reset}")
-            for w in verdict.warnings:
-                lines.append(f"  ├─► {w}")
+            for i, w in enumerate(verdict.warnings):
+                conn = "└─►" if i == len(verdict.warnings) - 1 else "├─►"
+                lines.append(f"  {conn} {w}")
 
         lines.append("")
         lines.append(f"{c_bold}{c_cyan}[4] READY-TO-PASTE SOC TICKET NOTE{c_reset}")

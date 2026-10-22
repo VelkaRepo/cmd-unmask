@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 from cmd_unmask import unmask_command
 from cmd_unmask.cli import main
+from cmd_unmask.renderer import build_soc_ticket_note, render_markdown, render_pretty
 
 
 class TestOperatorUxAndVisualCli(unittest.TestCase):
@@ -125,6 +126,26 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         self.assertIn("## Triage Verdict", buf_md.getvalue())
         self.assertIn("Step 1 [Shell Normalizer]", buf_md.getvalue())
         self.assertNotIn("node_0 -> node_1", buf_md.getvalue())
+
+    def test_truncation_warning_displayed_in_pretty_markdown_and_ticket_note(self) -> None:
+        # Real QRadar truncated -EncodedCommand payload ending in AFsARABsAGwASQBtAH
+        cmd = "powershell.exe -enc VwByAGkAdABlAC0ASABvAHMAdAAgAFsARABsAGwASQBtAH"
+        verdict = unmask_command(cmd)
+
+        # 1. Pretty output must show [!] DIAGNOSTIC WARNINGS with truncation warning
+        pretty_out = render_pretty([verdict], color=False)
+        self.assertIn("[!] DIAGNOSTIC WARNINGS", pretty_out)
+        self.assertIn("Input Base64 appears truncated; payload decoded partially.", pretty_out)
+        self.assertIn("└─► Input Base64 appears truncated; payload decoded partially.", pretty_out)
+
+        # 2. Markdown output must show Diagnostic Warnings section
+        md_out = render_markdown([verdict])
+        self.assertIn("- **Diagnostic Warnings**:", md_out)
+        self.assertIn("Input Base64 appears truncated; payload decoded partially.", md_out)
+
+        # 3. SOC ticket note must show Warnings line
+        ticket_note = build_soc_ticket_note(verdict)
+        self.assertIn("Warnings      : Input Base64 appears truncated; payload decoded partially.", ticket_note)
 
 
 if __name__ == "__main__":
