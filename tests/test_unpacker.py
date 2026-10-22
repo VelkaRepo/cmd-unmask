@@ -111,6 +111,24 @@ class TestBoundedUnpackingDagAndDecoders(unittest.TestCase):
             "/usr/lib/systemd/system/wazuh_agent_auth.service",
             "some_identifier_with_underscores_and_no_base64_payload",
             "path_to_some_file_name_2026_10_22_log.txt",
+            # GUIDs (bare and braced)
+            "{6B29FC40-CA47-1067-B31D-00DD010662DA}",
+            "e9a3b680-3a5c-4d33-bc2a-14d8759620b7",
+            # 40-hex SHA1 hashes
+            "da39a3ee5e6b4b0d3255bfef95601890afd80709",
+            "DA39A3EE5E6B4B0D3255BFEF95601890AFD80709",
+            # 64-hex SHA256 hashes
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",
+            # Long CamelCase / PascalCase cmdlet and type identifier chains
+            r"Get-ItemProperty -Path HKLM:\Software | Select-Object -ExpandProperty ConfigurationSettings",
+            "ConfigurationManagerInternalSettingsFactory",
+            # Long underscore-joined build or file names
+            "build_artifact_release_x64_windows_server_2026_final_signed.tar.gz",
+            "package_build_artifact_release_x86_64_windows_v2_final_signed.log",
+            # Version strings
+            "v1.2.3.4-preview.build.20261022.abcdef12",
+            "Microsoft.PowerShell.Core_7.4.1.0_x64__8wekyb3d8bbwe",
         ]
         for cmd in negatives:
             v = unmask_command(cmd)
