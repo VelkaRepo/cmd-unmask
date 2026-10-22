@@ -61,7 +61,7 @@ During live L1/L2 alert triage, every minute spent manually baking CyberChef rec
 
 - 🔄 **Two-Pass Shell Normalization**: Strips `cmd.exe` carets (`^`), empty quotes (`""`), `%var:~offset,len%` slices, and PowerShell backticks (`` ` ``) without corrupting quoted literals.
 - 🧩 **Static Expression Folding**: Resolves PowerShell format operators (`-f`), `[char]` casts, `-join`, `.Replace()` / `-replace`, string concatenation, and Bash ANSI-C quoting (`$'\x..'`).
-- 🌲 **Bounded Interleaved Unpacking DAG**: Explores nested payloads via BFS (`max_depth=10`, `max_nodes=32`) decoding Base64, Gzip, Deflate (32MB ceiling), Hex, URL, CharCode, and gated XOR.
+- 🌲 **Bounded Interleaved Unpacking DAG**: Explores nested payloads via BFS (`max_depth=10`, `max_nodes=64`) decoding Base64, Gzip, Deflate (256 KB ceiling), Hex, URL, CharCode, and gated XOR.
 - 🛡️ **Contextual IOC Extraction & Defanging**: Full-DAG harvesting of URLs, domains, IPs, file paths, and hashes with `.NET` namespace false-positive suppression and automatic defanging.
 - 🎯 **MITRE ATT&CK Behavioral Scoring**: Dual-stage risk scoring (0–100) mapping unmasked payloads and LOLBins (`certutil`, `mshta`, `rundll32`, `wmic`, `bits`) to MITRE techniques.
 - 📋 **Frictionless Clipboard & Batch Ingestion**: Direct OS clipboard triage (`-p`, `--copy-note`), interactive TTY prompt, and automated SIEM log parsing (JSON, JSONL, text).

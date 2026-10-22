@@ -21,10 +21,10 @@ Detailed architecture diagram and operator terminal output reference for `cmd-un
                                     ▼
 ┌───────────────────────────────────────────────────────────────────────┐
 │ Pillar 2: Interleaved Unpacking DAG & Case-Aware Expression Resolver  │
-│  • Bounded BFS DAG (max_depth=10, max_nodes=32, SHA-256 deduplicated) │
+│  • Bounded BFS DAG (max_depth=10, max_nodes=64, SHA-256 deduplicated) │
 │  • Interleaves per-node: Normalizer -> Expression Resolver -> Carvers │
 │  • Decoders: Base64 (UTF-16LE/UTF-8, URL-safe, unpadded), Gzip,       │
-│    Deflate (32MB chunked ceiling), Hex, URL, CharCode, & Gated XOR    │
+│    Deflate (256 KB chunked ceiling), Hex, URL, CharCode, & Gated XOR  │
 │  • Splices decoded spans into Reconstructed Commands & ranks leaves   │
 └───────────────────────────────────┬───────────────────────────────────┘
                                     │
