@@ -132,8 +132,11 @@ def _passes_rigidity_gate(text: str, min_printable: float = MIN_PRINTABLE_RATIO)
     return pr >= min_printable and ent <= MAX_SHANNON_ENTROPY
 
 
-def _decode_bytes_to_text(raw_bytes: bytes) -> tuple[str, str] | None:
-    """Attempt UTF-16LE or UTF-8 decoding on raw bytes if it passes Detection Rigidity."""
+def _decode_bytes_to_text(raw_bytes: bytes) -> tuple[str, str, bool] | None:
+    """Attempt UTF-16LE or UTF-8 decoding on raw bytes if it passes Detection Rigidity.
+
+    Returns (text, encoding, unit_incomplete) or None.
+    """
     if not raw_bytes:
         return None
 
@@ -144,14 +147,33 @@ def _decode_bytes_to_text(raw_bytes: bytes) -> tuple[str, str] | None:
             try:
                 text16 = raw_bytes.decode("utf-16le")
                 if _passes_rigidity_gate(text16):
-                    return text16, "utf-16le"
+                    return text16, "utf-16le", False
+            except Exception:
+                pass
+    elif len(raw_bytes) >= 5 and len(raw_bytes) % 2 != 0:
+        raw_even = raw_bytes[:-1]
+        odd_nulls = sum(1 for idx in range(1, len(raw_even), 2) if raw_even[idx] == 0)
+        half_len = len(raw_even) // 2
+        if odd_nulls / half_len >= 0.35:
+            try:
+                text16 = raw_even.decode("utf-16le")
+                if _passes_rigidity_gate(text16):
+                    return text16, "utf-16le", True
             except Exception:
                 pass
 
     try:
         text8 = raw_bytes.decode("utf-8")
         if _passes_rigidity_gate(text8):
-            return text8, "utf-8"
+            return text8, "utf-8", False
+    except UnicodeDecodeError as exc:
+        if exc.end == len(raw_bytes):
+            try:
+                text8_part = raw_bytes[: exc.start].decode("utf-8")
+                if _passes_rigidity_gate(text8_part):
+                    return text8_part, "utf-8", True
+            except Exception:
+                pass
     except Exception:
         pass
 
@@ -198,7 +220,7 @@ def _chunked_decompress(
         return None, None
 
 
-def _try_decode_base64_span(token: str) -> bytes | None:
+def _try_decode_base64_span(token: str) -> tuple[bytes, bool] | None:
     """Decode standard or URL-safe Base64 token with automatic '=' padding repair."""
     cleaned = token.strip()
     if re.fullmatch(r"[0-9a-fA-F]+", cleaned) and len(cleaned) % 2 == 0 and len(cleaned) >= 24:
@@ -210,10 +232,14 @@ def _try_decode_base64_span(token: str) -> bytes | None:
     if pad_mod == 1:
         return None
     raw_unpadded = normalized.rstrip("=")
+    padding_reconstructed = False
     if pad_mod in (2, 3):
+        if len(normalized) % 4 != 0:
+            padding_reconstructed = True
         raw_unpadded += "=" * (4 - pad_mod)
     try:
-        return base64.b64decode(raw_unpadded, validate=True)
+        decoded = base64.b64decode(raw_unpadded, validate=True)
+        return decoded, padding_reconstructed
     except Exception:
         return None
 
@@ -448,7 +474,7 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
                 continue
             decoded_pair = _decode_bytes_to_text(raw_hex_bytes)
             if decoded_pair is not None:
-                decoded_hex, enc_used = decoded_pair
+                decoded_hex, enc_used = decoded_pair[:2]
                 _add_child(
                     parent=curr_node,
                     child_text=decoded_hex,
@@ -471,9 +497,10 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
         # C4. Base64 spans (standard + URL-safe, unpadded, UTF-16LE/UTF-8, Gzip/Deflate, XOR)
         for m_b64 in _find_base64_candidates(text):
             span_str = m_b64.group(1)
-            raw_b64 = _try_decode_base64_span(span_str)
-            if raw_b64 is None:
+            b64_res = _try_decode_base64_span(span_str)
+            if b64_res is None:
                 continue
+            raw_b64, pad_reconstructed = b64_res
 
             if raw_b64.startswith(b"\x1f\x8b"):
                 decomp, err = _chunked_decompress(
@@ -486,7 +513,11 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
                 if decomp is not None:
                     dec_pair = _decode_bytes_to_text(decomp)
                     if dec_pair is not None:
-                        dec_text, enc_used = dec_pair
+                        dec_text, enc_used = dec_pair[:2]
+                        if pad_reconstructed:
+                            trunc_warn = "Input Base64 appears truncated; payload decoded partially."
+                            if trunc_warn not in warnings:
+                                warnings.append(trunc_warn)
                         _add_child(
                             parent=curr_node,
                             child_text=dec_text,
@@ -517,7 +548,11 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
                     if decomp is not None:
                         dec_pair = _decode_bytes_to_text(decomp)
                         if dec_pair is not None:
-                            dec_text, enc_used = dec_pair
+                            dec_text, enc_used = dec_pair[:2]
+                            if pad_reconstructed:
+                                trunc_warn = "Input Base64 appears truncated; payload decoded partially."
+                                if trunc_warn not in warnings:
+                                    warnings.append(trunc_warn)
                             _add_child(
                                 parent=curr_node,
                                 child_text=dec_text,
@@ -544,7 +579,11 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
                     xored_bytes = bytes(b ^ xk for b in raw_b64)
                     dec_pair = _decode_bytes_to_text(xored_bytes)
                     if dec_pair is not None:
-                        dec_text, enc_used = dec_pair
+                        dec_text, enc_used, unit_incomplete = dec_pair
+                        if pad_reconstructed or unit_incomplete:
+                            trunc_warn = "Input Base64 appears truncated; payload decoded partially."
+                            if trunc_warn not in warnings:
+                                warnings.append(trunc_warn)
                         xor_matched = True
                         _add_child(
                             parent=curr_node,
@@ -573,7 +612,11 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
 
             dec_pair = _decode_bytes_to_text(raw_b64)
             if dec_pair is not None:
-                dec_text, enc_used = dec_pair
+                dec_text, enc_used, unit_incomplete = dec_pair
+                if pad_reconstructed or unit_incomplete:
+                    trunc_warn = "Input Base64 appears truncated; payload decoded partially."
+                    if trunc_warn not in warnings:
+                        warnings.append(trunc_warn)
                 tech_name = "base64_utf16le" if enc_used == "utf-16le" else "base64_utf8"
                 _add_child(
                     parent=curr_node,

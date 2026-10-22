@@ -117,6 +117,26 @@ class TestBoundedUnpackingDagAndDecoders(unittest.TestCase):
             self.assertEqual(len(v.dag.nodes), 1, f"Failed on negative command: {cmd}")
             self.assertEqual(v.provenance_chain, [])
 
+    def test_warn_when_base64_input_appears_truncated(self) -> None:
+        # Real QRadar case: EncodedCommand truncated mid-token ending in AFsARABsAGwASQBtAH
+        cmd = "powershell.exe -enc VwByAGkAdABlAC0ASABvAHMAdAAgAFsARABsAGwASQBtAH"
+        verdict = unmask_command(cmd)
+        self.assertIn("Write-Host [DllIm", verdict.primary_unmasked_payload)
+        self.assertTrue(
+            any("truncated" in w.lower() and "base64" in w.lower() for w in verdict.warnings),
+            f"Expected truncation warning in verdict.warnings, got: {verdict.warnings}",
+        )
+
+        # Truncated UTF-16 unit (odd byte count in Base64)
+        raw_odd = "Write-Host [DllImport]".encode("utf-16le")[:-1]
+        b64_odd = base64.b64encode(raw_odd).decode("ascii")
+        cmd_odd = f"powershell.exe -enc {b64_odd}"
+        verdict_odd = unmask_command(cmd_odd)
+        self.assertTrue(
+            any("truncated" in w.lower() and "base64" in w.lower() for w in verdict_odd.warnings),
+            f"Expected truncation warning in verdict_odd.warnings, got: {verdict_odd.warnings}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
