@@ -705,7 +705,7 @@ def unmask_command(
         primary_node = dag.nodes[dag.primary_leaf_id]
         leaves = [n.text for n in dag.get_leaf_nodes()]
         harvested_iocs = extract_iocs(dag)
-        behaviors = classify_dag(dag)
+        behaviors = classify_dag(dag, iocs=harvested_iocs)
         risk_score, severity = score_verdict(dag, behaviors, harvested_iocs)
 
         return TriageVerdict(

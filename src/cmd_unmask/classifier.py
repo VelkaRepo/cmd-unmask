@@ -2,10 +2,61 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from dataclasses import dataclass
+from urllib.parse import urlsplit
 
 from cmd_unmask.models import BehavioralMatch, ExtractedIOC, Severity, UnpackingDAG
+
+# Known cloud provider instance metadata service address (IMDSv1 / IMDSv2)
+CLOUD_METADATA_ADDRESS: str = "169.254.169.254"
+
+# Credential-bearing cloud metadata URI path substrings:
+# - AWS EC2: IAM security credentials role tokens (/latest/meta-data/iam/security-credentials/)
+# - Azure IMDS: Managed Identity OAuth2 tokens (/metadata/identity/oauth2/token)
+# - GCP Metadata: Service account identity/access tokens (/computeMetadata/v1/instance/service-accounts/)
+CREDENTIAL_METADATA_PATHS: tuple[str, ...] = (
+    "security-credentials",
+    "identity/oauth2/token",
+    "service-accounts",
+)
+
+
+def _is_link_local_host(host: str) -> bool:
+    try:
+        ip = ipaddress.ip_address(host)
+        return ip.is_link_local
+    except ValueError:
+        return False
+
+
+def _has_non_link_local_host(iocs: list[ExtractedIOC]) -> bool:
+    for ioc in iocs:
+        if ioc.ioc_type == "url":
+            try:
+                host = urlsplit(ioc.raw_value).hostname
+                if host and not _is_link_local_host(host):
+                    return True
+            except Exception:
+                pass
+        elif ioc.ioc_type == "domain":
+            return True
+        elif ioc.ioc_type in ("ipv4", "ipv6"):
+            if not _is_link_local_host(ioc.raw_value):
+                return True
+    return False
+
+
+def _executes_downloaded_content(text: str) -> bool:
+    low = text.lower()
+    if re.search(r"\b(?:iex|invoke-expression)\b", low):
+        return True
+    if re.search(r"\|\s*(?:iex|invoke-expression|powershell|pwsh|cmd|sh|bash)\b", low):
+        return True
+    if "-outfile" in low and re.search(r"(?:&|\bstart(?:-process)?\b|\binvoke-item\b|\bcmd(?:\.exe)?\s+/[ck]\b|\bpowershell(?:\.exe)?\b)", low):
+        return True
+    return False
 
 
 @dataclass(frozen=True)
@@ -187,11 +238,50 @@ def classify_node_text(text: str, source_node_id: str = "node_0") -> list[Behavi
                     source_node_id=source_node_id,
                 )
             )
+
+    if CLOUD_METADATA_ADDRESS in text:
+        low = text.lower()
+        m_url = re.search(r"https?://169\.254\.169\.254\S*", text, re.IGNORECASE)
+        ev = m_url.group(0).rstrip(",.;'\")>]") if m_url else CLOUD_METADATA_ADDRESS
+        if len(ev) > 120:
+            ev = ev[:117] + "..."
+        if any(p in low for p in CREDENTIAL_METADATA_PATHS):
+            matches.append(
+                BehavioralMatch(
+                    rule_id="CLOUD_METADATA_CREDENTIALS",
+                    name="Cloud Metadata API Credential Access",
+                    mitre_id="T1552.005",
+                    tactic="Credential Access",
+                    weight=35,
+                    evidence=ev,
+                    source_node_id=source_node_id,
+                )
+            )
+        else:
+            matches.append(
+                BehavioralMatch(
+                    rule_id="CLOUD_METADATA_QUERY",
+                    name="Cloud Instance Metadata API Query",
+                    mitre_id="T1552.005",
+                    tactic="Credential Access",
+                    weight=15,
+                    evidence=ev,
+                    source_node_id=source_node_id,
+                )
+            )
+
     return matches
 
 
-def classify_dag(dag: UnpackingDAG) -> list[BehavioralMatch]:
+def classify_dag(
+    dag: UnpackingDAG, iocs: list[ExtractedIOC] | None = None
+) -> list[BehavioralMatch]:
     """Classify obfuscation mechanics and payload behaviors across the entire UnpackingDAG."""
+    if iocs is None:
+        from cmd_unmask.ioc import extract_iocs
+
+        iocs = extract_iocs(dag)
+
     matches: list[BehavioralMatch] = []
     seen_rules: set[str] = set()
 
@@ -232,6 +322,15 @@ def classify_dag(dag: UnpackingDAG) -> list[BehavioralMatch]:
             if hit.rule_id not in seen_rules:
                 seen_rules.add(hit.rule_id)
                 matches.append(hit)
+
+    # Stage 3: Contextual T1105 suppression for cloud metadata queries
+    if "CLOUD_METADATA_QUERY" in seen_rules or "CLOUD_METADATA_CREDENTIALS" in seen_rules:
+        has_external_host = _has_non_link_local_host(iocs)
+        executes_download = any(
+            _executes_downloaded_content(node.text) for node in dag.nodes.values()
+        )
+        if not has_external_host and not executes_download:
+            matches = [m for m in matches if m.mitre_id != "T1105"]
 
     return matches
 
