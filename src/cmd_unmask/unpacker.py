@@ -32,6 +32,75 @@ XOR_BRUTEFORCE_MIN_PRINTABLE: float = 0.92
 _B64_SPAN_RE = re.compile(
     r"(?<![A-Za-z0-9+/=_-])([A-Za-z0-9+/_-]{16,}={0,2})(?![A-Za-z0-9+/=_-])"
 )
+_B64_STANDARD_RE = re.compile(
+    r"(?<![A-Za-z0-9+/=])([A-Za-z0-9+/]{16,}={0,2})(?![A-Za-z0-9+/=])"
+)
+_B64_URLSAFE_RE = re.compile(
+    r"(?<![A-Za-z0-9+/=_-])([A-Za-z0-9+/_-]{16,}={0,2})(?![A-Za-z0-9+/=_-])"
+)
+_DELIMITED_TOKEN_RE = re.compile(
+    r"(?<![A-Za-z0-9+/=_-])([A-Za-z0-9+/=_:-]{16,})(?![A-Za-z0-9+/=_-])"
+)
+
+
+class _Base64SpanMatch:
+    def __init__(self, start_idx: int, end_idx: int, token: str) -> None:
+        self._start = start_idx
+        self._end = end_idx
+        self._token = token
+
+    def start(self) -> int:
+        return self._start
+
+    def end(self) -> int:
+        return self._end
+
+    def group(self, idx: int = 1) -> str:
+        return self._token
+
+
+def _find_base64_candidates(text: str) -> list[_Base64SpanMatch]:
+    """Extract candidate Base64 runs, including tokens embedded inside delimited identifiers."""
+    candidates: list[_Base64SpanMatch] = []
+    seen_spans: set[tuple[int, int]] = set()
+
+    def _add(s_idx: int, e_idx: int, tok: str) -> None:
+        if (s_idx, e_idx) not in seen_spans and len(tok) >= 16:
+            seen_spans.add((s_idx, e_idx))
+            candidates.append(_Base64SpanMatch(s_idx, e_idx, tok))
+
+    # 1. Standard Base64 runs bounded by non-standard base64 characters (including _, -, :, quotes)
+    for m in _B64_STANDARD_RE.finditer(text):
+        _add(m.start(1), m.end(1), m.group(1))
+
+    # 2. URL-safe Base64 runs bounded by non-urlsafe characters
+    for m in _B64_URLSAFE_RE.finditer(text):
+        _add(m.start(1), m.end(1), m.group(1))
+
+    # 3. Delimited identifier carving (strip known delimiter prefix/suffix like _, -, :, quotes)
+    for m in _DELIMITED_TOKEN_RE.finditer(text):
+        full_tok = m.group(1)
+        base_start = m.start(1)
+        if "=" in full_tok:
+            eq_idx = full_tok.rfind("=")
+            while eq_idx + 1 < len(full_tok) and full_tok[eq_idx + 1] == "=":
+                eq_idx += 1
+            if eq_idx + 1 < len(full_tok):
+                trimmed = full_tok[: eq_idx + 1]
+                m_lead = re.match(r"^(?:[A-Za-z0-9]+[_\-:])+", trimmed)
+                lead_len = len(m_lead.group(0)) if m_lead else 0
+                cand = trimmed[lead_len:]
+                _add(base_start + lead_len, base_start + len(trimmed), cand)
+
+        m_lead = re.match(r"^(?:[A-Za-z0-9]+[_\-:])+", full_tok)
+        lead_len = len(m_lead.group(0)) if m_lead else 0
+        m_trail = re.search(r"(?:[_\-:][A-Za-z0-9]+)+$", full_tok)
+        trail_start = m_trail.start() if m_trail else len(full_tok)
+        if lead_len > 0 or trail_start < len(full_tok):
+            cand = full_tok[lead_len:trail_start]
+            _add(base_start + lead_len, base_start + trail_start, cand)
+
+    return candidates
 _HEX_SPAN_RE = re.compile(r"(?<![0-9A-Za-z_])(?:0x)?([0-9a-fA-F]{24,})(?![0-9A-Za-z_])")
 _URL_ENCODED_RE = re.compile(r"(?:%[0-9a-fA-F]{2}){2,}")
 _CHARCODE_SEQ_RE = re.compile(
@@ -400,7 +469,7 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
                     )
 
         # C4. Base64 spans (standard + URL-safe, unpadded, UTF-16LE/UTF-8, Gzip/Deflate, XOR)
-        for m_b64 in _B64_SPAN_RE.finditer(text):
+        for m_b64 in _find_base64_candidates(text):
             span_str = m_b64.group(1)
             raw_b64 = _try_decode_base64_span(span_str)
             if raw_b64 is None:

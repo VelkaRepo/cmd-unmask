@@ -80,6 +80,43 @@ class TestBoundedUnpackingDagAndDecoders(unittest.TestCase):
         verdict_bomb = unmask_command(f"powershell -enc {bomb_b64}", config=cfg)
         self.assertTrue(any("stream" in w.lower() or "exceed" in w.lower() or "limit" in w.lower() for w in verdict_bomb.warnings))
 
+    def test_decode_base64_embedded_in_delimited_identifiers(self) -> None:
+        # Repro 1: Nessus pattern with '=' padding and '_' delimiter
+        cmd1 = "echo nessus_cmd_Z2V0LWhlbHAgSW52b2tlLVJlc3RNZXRob2Q=_start"
+        verdict1 = unmask_command(cmd1)
+        self.assertTrue(any(step.technique == "base64_utf8" for step in verdict1.provenance_chain))
+        self.assertTrue(any("get-help Invoke-RestMethod" in node.text for node in verdict1.dag.nodes.values()))
+
+        # Repro 2: Second fixture without '=' padding delimited by '_'
+        tok2 = "SW52b2tlLVJlc3RNZXRob2QgLU1ldGhvZCBHRVQgLUhlYWRlcnMgQHt9IGh0dHA6Ly8xNjkuMjU0LjE2OS4yNTQvb3BjL3YxL2luc3RhbmNl"
+        expected2 = "Invoke-RestMethod -Method GET -Headers @{} http://169.254.169.254/opc/v1/instance"
+        cmd2 = f"echo nessus_cmd_{tok2}_start"
+        verdict2 = unmask_command(cmd2)
+        self.assertTrue(any("base64" in step.technique for step in verdict2.provenance_chain))
+        self.assertTrue(any(expected2 in node.text for node in verdict2.dag.nodes.values()))
+
+        # Delimited by '-' and ':'
+        cmd_dash = "echo prefix-Z2V0LWhlbHAgSW52b2tlLVJlc3RNZXRob2Q=-suffix"
+        verdict_dash = unmask_command(cmd_dash)
+        self.assertTrue(any("get-help Invoke-RestMethod" in n.text for n in verdict_dash.dag.nodes.values()))
+
+        cmd_colon = "echo token:Z2V0LWhlbHAgSW52b2tlLVJlc3RNZXRob2Q="
+        verdict_colon = unmask_command(cmd_colon)
+        self.assertTrue(any("get-help Invoke-RestMethod" in n.text for n in verdict_colon.dag.nodes.values()))
+
+    def test_negative_ordinary_identifiers_and_paths_do_not_decode(self) -> None:
+        negatives = [
+            r"C:\Program_Files\Nessus_Agent\nessuscli.exe scan --config=default_config",
+            "Get-Process -Name wazuh_agent_service -ErrorAction SilentlyContinue",
+            "/usr/lib/systemd/system/wazuh_agent_auth.service",
+            "some_identifier_with_underscores_and_no_base64_payload",
+            "path_to_some_file_name_2026_10_22_log.txt",
+        ]
+        for cmd in negatives:
+            v = unmask_command(cmd)
+            self.assertEqual(len(v.dag.nodes), 1, f"Failed on negative command: {cmd}")
+            self.assertEqual(v.provenance_chain, [])
+
 
 if __name__ == "__main__":
     unittest.main()
