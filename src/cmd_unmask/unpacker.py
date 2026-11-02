@@ -308,10 +308,11 @@ def unpack_dag(command_text: str, config: TriageConfig | None = None) -> Unpacki
     """Explore the bounded Unpacking DAG starting from command_text."""
     cfg = config or TriageConfig()
     start_time = time.monotonic()
+    clean_command = command_text.lstrip("\ufeff") if isinstance(command_text, str) else ""
 
     root_node = PayloadNode(
         node_id="node_0",
-        text=command_text,
+        text=clean_command,
         depth=0,
         parent_id=None,
         technique="root",
@@ -684,6 +685,8 @@ def unmask_command(
     """Execute the end-to-end static de-obfuscation and triage pipeline on a command."""
     cfg = config or TriageConfig()
     warnings: list[str] = list(initial_warnings) if initial_warnings else []
+    if isinstance(raw_cmd, str) and raw_cmd.startswith("\ufeff"):
+        raw_cmd = raw_cmd.lstrip("\ufeff")
 
     try:
         if not isinstance(raw_cmd, str) or not raw_cmd.strip():

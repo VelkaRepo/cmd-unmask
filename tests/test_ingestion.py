@@ -158,6 +158,55 @@ class TestBatchSiemIngestionAndUnescaping(unittest.TestCase):
                 code = main(["-f", str(file_path), "--fail-on", "HIGH"])
             self.assertEqual(code, 2)
 
+    def test_utf8_bom_stripped_on_file_ingestion(self) -> None:
+        import base64
+        from cmd_unmask import unmask_command
+
+        b64_ps = base64.b64encode("Write-Output 'safe_script'".encode("utf-16le")).decode("ascii")
+        raw_cmd = f"powershell.exe -enc {b64_ps}"
+        jsonl_cmd = json.dumps({"command_line": raw_cmd})
+        b64_sh = base64.b64encode(b"echo internal_check").decode("ascii")
+        shell_group_cmd = f"{{ echo {b64_sh} | base64 -d; }}"
+
+        cases = [
+            ("raw.txt", raw_cmd),
+            ("sample.jsonl", jsonl_cmd),
+            ("shell_group.sh", shell_group_cmd),
+        ]
+
+        for filename, content_str in cases:
+            with self.subTest(filename=filename):
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    p_bom = Path(tmpdir) / f"bom_{filename}"
+                    p_nobom = Path(tmpdir) / f"nobom_{filename}"
+
+                    p_bom.write_bytes(b"\xef\xbb\xbf" + content_str.encode("utf-8"))
+                    p_nobom.write_bytes(content_str.encode("utf-8"))
+
+                    records_bom = ingest_file(str(p_bom))
+                    records_nobom = ingest_file(str(p_nobom))
+
+                    self.assertEqual(len(records_bom), len(records_nobom))
+                    rec_b = records_bom[0]
+                    rec_nb = records_nobom[0]
+
+                    self.assertNotIn("\ufeff", rec_b.command_text)
+                    self.assertNotIn("\ufeff", rec_b.raw_input)
+                    self.assertEqual(rec_b.command_text, rec_nb.command_text)
+
+                    vb = unmask_command(rec_b.command_text, initial_warnings=rec_b.warnings)
+                    vnb = unmask_command(rec_nb.command_text, initial_warnings=rec_nb.warnings)
+
+                    self.assertNotIn("\ufeff", vb.original_command)
+                    for leaf in vb.leaf_payloads:
+                        self.assertNotIn("\ufeff", leaf)
+                    for node in vb.dag.nodes.values():
+                        self.assertNotIn("\ufeff", node.text)
+
+                    self.assertEqual(vb.primary_unmasked_payload, vnb.primary_unmasked_payload)
+                    self.assertEqual(vb.severity, vnb.severity)
+                    self.assertEqual(vb.risk_score, vnb.risk_score)
+
 
 if __name__ == "__main__":
     unittest.main()

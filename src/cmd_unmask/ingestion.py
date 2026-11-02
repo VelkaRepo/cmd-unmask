@@ -25,7 +25,7 @@ _ESC_BS = _BS + _BS
 
 def unescape_outer_siem_wrapper(raw_cmd: str) -> str:
     """Unescape outer SIEM JSON string wrapper when present."""
-    text = raw_cmd.strip()
+    text = raw_cmd.strip().lstrip("\ufeff")
     if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
         try:
             loaded = json.loads(text)
@@ -62,19 +62,20 @@ def _record_from_json_obj(
     candidate_fields: tuple[str, ...],
 ) -> IngestionRecord:
     """Convert a parsed JSON record into an IngestionRecord."""
+    clean_raw_input = raw_input.lstrip("\ufeff")
     if isinstance(obj, str):
         cleaned = unescape_outer_siem_wrapper(obj)
         warnings = [] if cleaned.strip() else ["Empty command string in JSON record."]
         return IngestionRecord(
             source_id=source_id,
-            raw_input=raw_input,
+            raw_input=clean_raw_input,
             command_text=cleaned,
             warnings=warnings,
         )
     if not isinstance(obj, dict):
         return IngestionRecord(
             source_id=source_id,
-            raw_input=raw_input,
+            raw_input=clean_raw_input,
             command_text="",
             warnings=[f"Unsupported JSON record type: {type(obj).__name__}."],
         )
@@ -85,13 +86,13 @@ def _record_from_json_obj(
             warnings = [] if cleaned.strip() else [f"Field '{key}' is empty."]
             return IngestionRecord(
                 source_id=source_id,
-                raw_input=raw_input,
+                raw_input=clean_raw_input,
                 command_text=cleaned,
                 warnings=warnings,
             )
     return IngestionRecord(
         source_id=source_id,
-        raw_input=raw_input,
+        raw_input=clean_raw_input,
         command_text="",
         warnings=[
             f"Command field not found in JSON record (checked: {', '.join(candidate_fields)})."
@@ -103,6 +104,8 @@ def ingest_single_command(raw_cmd: str, source_id: str = "cli") -> IngestionReco
     """Ingest a single command string from CLI or stdin."""
     warnings: list[str] = []
     raw_str = raw_cmd if isinstance(raw_cmd, str) else ""
+    if raw_str.startswith("\ufeff"):
+        raw_str = raw_str.lstrip("\ufeff")
     text = unescape_outer_siem_wrapper(raw_str)
     if not text.strip():
         warnings.append("Empty or whitespace-only command input.")
@@ -119,7 +122,7 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
     path = Path(file_path)
     label = path.name
     try:
-        content = path.read_text(encoding="utf-8", errors="replace")
+        content = path.read_text(encoding="utf-8-sig", errors="replace")
     except Exception as exc:
         return [
             IngestionRecord(
@@ -133,6 +136,7 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
     candidate_fields: tuple[str, ...] = (
         (custom_field,) if custom_field else DEFAULT_SIEM_FIELDS
     )
+    content = content.lstrip("\ufeff")
     stripped = content.strip()
     if not stripped:
         return [
@@ -177,7 +181,8 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
 
     records: list[IngestionRecord] = []
     for line_num, raw_line in enumerate(lines, start=1):
-        line = raw_line.strip()
+        clean_raw_line = raw_line.lstrip("\ufeff")
+        line = clean_raw_line.strip()
         if not line:
             continue
         src_id = f"{label}:{line_num}"
@@ -188,7 +193,7 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
                     _record_from_json_obj(
                         parsed_line,
                         source_id=src_id,
-                        raw_input=raw_line,
+                        raw_input=clean_raw_line,
                         candidate_fields=candidate_fields,
                     )
                 )
@@ -197,7 +202,7 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
                 records.append(
                     IngestionRecord(
                         source_id=src_id,
-                        raw_input=raw_line,
+                        raw_input=clean_raw_line,
                         command_text=cleaned,
                         warnings=[f"Corrupt JSON line at {src_id}: {exc}; falling back to raw command"],
                     )
@@ -207,7 +212,7 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
             records.append(
                 IngestionRecord(
                     source_id=src_id,
-                    raw_input=raw_line,
+                    raw_input=clean_raw_line,
                     command_text=cleaned,
                     warnings=[],
                 )
