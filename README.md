@@ -107,7 +107,7 @@ pip install -e .
 | `--no-defang` | — | Emit raw IOCs instead of defanged IOCs | `False` |
 | `--max-depth` | `INT` | Maximum Unpacking DAG recursion depth | `10` |
 | `--timeout` | `FLOAT` | Per-command unpacking timeout in seconds | `3.0` |
-| `--fail-on` | `SEV` | Exit code 2 if severity meets or exceeds `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` | None |
+| `--fail-on` | `SEV` | Exit code 2 if severity meets or exceeds `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (or if verdict is `UNKNOWN`) | None |
 | `-h`, `--help` | — | Show CLI help message and exit | — |
 
 ### 1. Clipboard & Interactive Mode (Avoids Local CLI Inspection Blocks)
