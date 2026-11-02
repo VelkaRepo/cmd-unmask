@@ -166,14 +166,17 @@ def _normalize_cmd_pass(text: str) -> tuple[str, bool, dict[str, str]]:
     env_map = dict(CANONICAL_WIN11_ENV)
     discovered_vars = _extract_inline_set_vars(text, env_map)
 
+    # Unwrap doubled quotes wrapping tokens (e.g. QRadar export ""C:\..."" -> "C:\...")
+    preprocessed = re.sub(r'""([^"]+?)""', r'"\1"', text)
+
     # First, strip unquoted ^ escapes and collapse adjacent empty double quotes embedded in tokens
     out: list[str] = []
     in_single = False
-    n = len(text)
+    n = len(preprocessed)
     i = 0
 
     while i < n:
-        ch = text[i]
+        ch = preprocessed[i]
 
         if ch == "'":
             in_single = not in_single
@@ -183,9 +186,9 @@ def _normalize_cmd_pass(text: str) -> tuple[str, bool, dict[str, str]]:
 
         if not in_single:
             # Collapse adjacent empty double quotes when attached to word characters (e.g. po""wershell)
-            if ch == '"' and i + 1 < n and text[i + 1] == '"':
+            if ch == '"' and i + 1 < n and preprocessed[i + 1] == '"':
                 prev_ch = out[-1] if out else ""
-                next_ch = text[i + 2] if i + 2 < n else ""
+                next_ch = preprocessed[i + 2] if i + 2 < n else ""
                 prev_is_word = bool(prev_ch) and (prev_ch.isalnum() or prev_ch in "_-/.")
                 next_is_word = bool(next_ch) and (next_ch.isalnum() or next_ch in "_-/.")
                 if prev_is_word and next_is_word:

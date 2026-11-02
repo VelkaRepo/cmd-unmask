@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -21,21 +22,25 @@ DEFAULT_SIEM_FIELDS: tuple[str, ...] = (
 _BS = chr(92)
 _ESC_QUOTE = _BS + '"'
 _ESC_BS = _BS + _BS
+_DOUBLED_QUOTES_RE = re.compile(r'""([^"]+?)""')
 
 
 def unescape_outer_siem_wrapper(raw_cmd: str) -> str:
-    """Unescape outer SIEM JSON string wrapper when present."""
+    """Unescape outer SIEM JSON string wrapper or QRadar doubled quotes when present."""
     text = raw_cmd.strip().lstrip("\ufeff")
     if len(text) >= 2 and text.startswith('"') and text.endswith('"'):
         try:
             loaded = json.loads(text)
             if isinstance(loaded, str):
-                return loaded
+                text = loaded
         except Exception:
             inner = text[1:-1]
-            return inner.replace(_ESC_QUOTE, '"').replace(_ESC_BS, _BS)
-    if _ESC_QUOTE in text and text.count(_ESC_QUOTE) >= 2:
-        return text.replace(_ESC_QUOTE, '"').replace(_ESC_BS, _BS)
+            text = inner.replace(_ESC_QUOTE, '"').replace(_ESC_BS, _BS)
+    elif _ESC_QUOTE in text and text.count(_ESC_QUOTE) >= 2:
+        text = text.replace(_ESC_QUOTE, '"').replace(_ESC_BS, _BS)
+
+    if '""' in text:
+        text = _DOUBLED_QUOTES_RE.sub(r'"\1"', text)
     return text
 
 
