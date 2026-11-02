@@ -23,6 +23,10 @@ _REGISTRY_KEY_RE = re.compile(
     re.IGNORECASE,
 )
 
+_QUOTED_WIN_FILEPATH_RE = re.compile(
+    r"[\"']([A-Za-z]:\\(?:[^\"'<>|;&:\\]+\\)*[^\"'<>|;&:\\]+)[\"']"
+)
+
 _WIN_FILEPATH_RE = re.compile(
     r"\b([A-Za-z]:\\(?:[^\s\"'<>|;&:\\]+\\)*[^\s\"'<>|;&:\\]+)"
 )
@@ -430,6 +434,20 @@ def extract_iocs_from_text(
         )
 
     # 4. Windows & POSIX Filepaths
+    for m in _QUOTED_WIN_FILEPATH_RE.finditer(text):
+        if _overlaps_spans(m.start(1), m.end(1), occupied_spans):
+            continue
+        raw_fp = m.group(1).rstrip(",.;'\")")
+        occupied_spans.append((m.start(0), m.end(0)))
+        results.append(
+            ExtractedIOC(
+                ioc_type="filepath",
+                raw_value=raw_fp,
+                defanged_value=defang_ioc("filepath", raw_fp),
+                source_node_id=source_node_id,
+            )
+        )
+
     for m in _WIN_FILEPATH_RE.finditer(text):
         if _overlaps_spans(m.start(1), m.end(1), occupied_spans):
             continue
@@ -542,6 +560,51 @@ def extract_iocs_from_text(
     return results
 
 
+_CANONICAL_INTERPRETER_PATHS: frozenset[str] = frozenset(
+    {
+        r"\windows\system32\powershell.exe",
+        r"\windows\syswow64\powershell.exe",
+        r"\windows\system32\windowspowershell\v1.0\powershell.exe",
+        r"\windows\syswow64\windowspowershell\v1.0\powershell.exe",
+        r"\windows\system32\cmd.exe",
+        r"\windows\syswow64\cmd.exe",
+        r"\windows\system32\cscript.exe",
+        r"\windows\syswow64\cscript.exe",
+        r"\windows\system32\wscript.exe",
+        r"\windows\syswow64\wscript.exe",
+        r"\windows\system32\mshta.exe",
+        r"\windows\syswow64\mshta.exe",
+        r"\windows\system32\bash.exe",
+        r"\windows\system32\wsl.exe",
+    }
+)
+
+_POSIX_CANONICAL_INTERPRETERS: frozenset[str] = frozenset(
+    {
+        "/bin/bash",
+        "/usr/bin/bash",
+        "/bin/sh",
+        "/usr/bin/sh",
+        "/bin/zsh",
+        "/usr/bin/zsh",
+        "/bin/dash",
+        "/usr/bin/dash",
+    }
+)
+
+
+def _is_canonical_system_interpreter(path: str) -> bool:
+    p_norm = path.replace("/", "\\").lower()
+    sub_p = re.sub(r"^[a-z]:", "", p_norm)
+    if sub_p in _CANONICAL_INTERPRETER_PATHS:
+        return True
+    if re.match(r"^\\program files(?: \(x86\))?\\powershell\\(?:\d+(?:\.\d+)*)?\\pwsh\.exe$", sub_p):
+        return True
+    if path.lower() in _POSIX_CANONICAL_INTERPRETERS:
+        return True
+    return False
+
+
 def extract_iocs(dag: UnpackingDAG) -> list[ExtractedIOC]:
     """Harvest and deduplicate contextual IOCs across all Payload Nodes in an UnpackingDAG."""
     # Collect any hex substrings that were decoded into child nodes via hex_decode
@@ -555,6 +618,17 @@ def extract_iocs(dag: UnpackingDAG) -> list[ExtractedIOC]:
     all_iocs: list[ExtractedIOC] = []
     seen: set[tuple[str, str]] = set()
 
+    # Identify outer command nodes (root node and any nodes derived solely through shell normalization)
+    outer_node_ids: set[str] = {dag.root_id}
+    changed = True
+    while changed:
+        changed = False
+        for edge in dag.edges:
+            if edge.parent_id in outer_node_ids and edge.technique == "shell_normalizer":
+                if edge.child_id not in outer_node_ids:
+                    outer_node_ids.add(edge.child_id)
+                    changed = True
+
     for node_id, node in dag.nodes.items():
         node_iocs = extract_iocs_from_text(
             node.text,
@@ -562,6 +636,9 @@ def extract_iocs(dag: UnpackingDAG) -> list[ExtractedIOC]:
             decoded_hex_blobs=decoded_hex_blobs,
         )
         for item in node_iocs:
+            if node_id in outer_node_ids and item.ioc_type == "filepath":
+                if _is_canonical_system_interpreter(item.raw_value):
+                    continue
             dedup_key = (item.ioc_type, item.raw_value.lower() if item.ioc_type in ("domain", "ipv4", "ipv6", "hash_md5", "hash_sha1", "hash_sha256") else item.raw_value)
             if dedup_key not in seen:
                 seen.add(dedup_key)

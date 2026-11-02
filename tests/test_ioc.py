@@ -117,6 +117,58 @@ class TestContextualIocExtractorAndDefanging(unittest.TestCase):
             self.assertIn("is_cloud_metadata", i_dict)
             self.assertTrue(i_dict["is_cloud_metadata"])
 
+    def test_suppress_canonical_interpreter_path_at_root(self) -> None:
+        # Canonical interpreter paths at root (depth == 0) must be suppressed from IOCs
+        canonical_cmds = [
+            r"C:\Windows\System32\powershell.exe -enc AAAA",
+            r"C:\Windows\SysWOW64\powershell.exe -enc AAAA",
+            r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -enc AAAA",
+            r"C:\Windows\SysWOW64\WindowsPowerShell\v1.0\powershell.exe -enc AAAA",
+            r"C:\Windows\System32\cmd.exe /c whoami",
+            r"C:\Windows\SysWOW64\cmd.exe /c whoami",
+            r'"C:\Program Files\PowerShell\7\pwsh.exe" -c whoami',
+            r"%SystemRoot%\System32\cmd.exe /c whoami",
+            r"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe -enc AAAA",
+            "powershell.exe -enc AAAA",
+            "cmd.exe /c whoami",
+        ]
+        for cmd in canonical_cmds:
+            v = unmask_command(cmd)
+            filepath_iocs = [i.raw_value for i in v.iocs if i.ioc_type == "filepath"]
+            self.assertEqual(
+                filepath_iocs,
+                [],
+                f"Canonical interpreter path at root was unexpectedly retained as IOC for: {cmd}",
+            )
+
+        # Non-canonical paths or impostors must REMAIN as IOCs
+        retained_cases = {
+            r"C:\Temp\powershell.exe -enc AAAA": r"C:\Temp\powershell.exe",
+            r"C:\Users\Public\svchost.exe -c whoami": r"C:\Users\Public\svchost.exe",
+            r"C:\Users\Public\System32\powershell.exe -enc AAAA": r"C:\Users\Public\System32\powershell.exe",
+            r"C:\Windows\System32.evil\powershell.exe -enc AAAA": r"C:\Windows\System32.evil\powershell.exe",
+        }
+        for cmd, expected_path in retained_cases.items():
+            v = unmask_command(cmd)
+            filepath_iocs = [i.raw_value for i in v.iocs if i.ioc_type == "filepath"]
+            self.assertIn(
+                expected_path,
+                filepath_iocs,
+                f"Non-canonical interpreter was unexpectedly suppressed for: {cmd}",
+            )
+
+        # Interpreter paths found in decoded nodes (depth > 0) must NOT be suppressed
+        inner = r"C:\Windows\System32\cmd.exe /c whoami"
+        b64 = base64.b64encode(inner.encode("utf-16le")).decode("ascii")
+        cmd_nested = f"powershell.exe -enc {b64}"
+        v_nested = unmask_command(cmd_nested)
+        filepath_iocs = [i.raw_value for i in v_nested.iocs if i.ioc_type == "filepath"]
+        self.assertIn(
+            r"C:\Windows\System32\cmd.exe",
+            filepath_iocs,
+            "Canonical interpreter inside decoded node (depth > 0) was unexpectedly suppressed",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
