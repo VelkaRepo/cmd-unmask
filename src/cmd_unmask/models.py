@@ -13,6 +13,7 @@ from typing import Any
 class Severity(str, Enum):
     """Deterministic triage severity classification."""
 
+    UNKNOWN = "UNKNOWN"
     BENIGN = "BENIGN"
     LOW = "LOW"
     MEDIUM = "MEDIUM"
@@ -22,6 +23,7 @@ class Severity(str, Enum):
     @property
     def rank(self) -> int:
         order = {
+            Severity.UNKNOWN: -1,
             Severity.BENIGN: 0,
             Severity.LOW: 1,
             Severity.MEDIUM: 2,
@@ -224,7 +226,7 @@ class TriageVerdict:
     iocs: list[ExtractedIOC] = field(default_factory=list)
     behavioral_matches: list[BehavioralMatch] = field(default_factory=list)
     risk_score: int = 0
-    severity: Severity = Severity.BENIGN
+    severity: Severity = Severity.UNKNOWN
     warnings: list[str] = field(default_factory=list)
 
     def to_dict(self, defang: bool = True) -> dict[str, Any]:

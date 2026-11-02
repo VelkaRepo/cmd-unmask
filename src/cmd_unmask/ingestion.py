@@ -193,12 +193,13 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
                     )
                 )
             except Exception as exc:
+                cleaned = unescape_outer_siem_wrapper(line)
                 records.append(
                     IngestionRecord(
                         source_id=src_id,
                         raw_input=raw_line,
-                        command_text="",
-                        warnings=[f"Corrupt JSON line at {src_id}: {exc}"],
+                        command_text=cleaned,
+                        warnings=[f"Corrupt JSON line at {src_id}: {exc}; falling back to raw command"],
                     )
                 )
         else:
@@ -211,6 +212,15 @@ def ingest_file(file_path: str, custom_field: str | None = None) -> list[Ingesti
                     warnings=[],
                 )
             )
+    if not records:
+        return [
+            IngestionRecord(
+                source_id=label,
+                raw_input="",
+                command_text="",
+                warnings=["Input contains zero analyzable records."],
+            )
+        ]
     return records
 
 

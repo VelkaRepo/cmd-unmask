@@ -128,6 +128,8 @@ def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: boo
             return c_yellow + c_bold
         if sev == Severity.LOW:
             return c_magenta + c_bold
+        if sev == Severity.UNKNOWN:
+            return c_yellow + c_bold
         return c_green + c_bold
 
     blocks: list[str] = []

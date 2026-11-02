@@ -56,7 +56,8 @@ class TestTracerBulletPipeline(unittest.TestCase):
 
     def test_defensive_handling_on_empty_command(self) -> None:
         verdict = unmask_command("   ")
-        self.assertEqual(verdict.severity, Severity.BENIGN)
+        self.assertEqual(verdict.severity, Severity.UNKNOWN)
+        self.assertEqual(verdict.risk_score, 0)
         self.assertTrue(any("Empty" in w for w in verdict.warnings))
 
 

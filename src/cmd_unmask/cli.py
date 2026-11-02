@@ -190,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--fail-on",
         choices=["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-        help="Exit with status code 2 if any verdict meets or exceeds this severity.",
+        help="Exit with status code 2 if any verdict meets or exceeds this severity threshold (or is UNKNOWN).",
     )
     return parser
 
@@ -268,7 +268,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.fail_on:
         threshold = Severity(args.fail_on)
-        if any(v.severity.rank >= threshold.rank for v in verdicts):
+        if any(v.severity == Severity.UNKNOWN or v.severity.rank >= threshold.rank for v in verdicts):
             return 2
 
     return 0

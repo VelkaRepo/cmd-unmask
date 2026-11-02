@@ -697,6 +697,8 @@ def unmask_command(
                 dag=dag,
                 provenance_chain=[],
                 leaf_payloads=[safe_text] if safe_text else [],
+                severity=Severity.UNKNOWN,
+                risk_score=0,
                 warnings=warnings,
             )
 
@@ -734,5 +736,7 @@ def unmask_command(
             original_command=str(raw_cmd or ""),
             primary_unmasked_payload=str(raw_cmd or ""),
             dag=fallback_dag,
+            severity=Severity.UNKNOWN,
+            risk_score=0,
             warnings=warnings,
         )
