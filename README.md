@@ -192,7 +192,7 @@ While `cmd-unmask` is engineered for high detection rigidity and deep static unp
 
 ## 🧪 Verification & Test Suite
 
-Run the full unit and integration test suite (42 tests covering DOSfuscation, expression folding, multi-layer DAG unpacking, zip-bomb ceilings, IOC false-positive suppression, MITRE classification, and CLI UX) via Python's built-in `unittest` discovery:
+Run the full unit and integration test suite (60 tests covering DOSfuscation, expression folding, multi-layer DAG unpacking, zip-bomb ceilings, IOC false-positive suppression, MITRE classification, sanitized real-world fixtures, and CLI UX) via Python's built-in `unittest` discovery:
 
 ```bash
 python -m unittest discover -s tests -v
