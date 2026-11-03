@@ -1,0 +1,3 @@
+# Zero-Dependency Sigma Rule Synthesis
+
+`cmd-unmask` synthesizes portable Sigma detection rules directly from triaged `TriageVerdict` findings using 100% Python standard library string templating without external YAML parsers (such as PyYAML). Detection engineering requires fast conversion from unmasked command telemetry and MITRE ATT&CK classifications into SIEM-ingestible detection logic. Generating standard-compliant Sigma YAML via a deterministic, dependency-free serializer ensures that analysts on air-gapped or dependency-restricted workstations can immediately draft, validate, and export detection rules without installing third-party packages.

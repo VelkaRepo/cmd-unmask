@@ -56,4 +56,8 @@ _Avoid_: Sanitized URL, masked indicator, escaped IOC
 The highest-signal terminal leaf node selected from the Unpacking DAG as the headline decoded command in the Triage Verdict.
 _Avoid_: Best guess, final string, winner node
 
+**Sigma Rule Synthesizer**:
+The dependency-free generator that translates unmasked commands, extracted IOCs, and MITRE ATT&CK classifications into portable, vendor-neutral Sigma YAML detection rules.
+_Avoid_: Rule exporter, Sigma writer, signature maker
+
 
