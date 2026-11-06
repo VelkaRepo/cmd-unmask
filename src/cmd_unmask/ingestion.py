@@ -22,7 +22,14 @@ DEFAULT_SIEM_FIELDS: tuple[str, ...] = (
 _BS = chr(92)
 _ESC_QUOTE = _BS + '"'
 _ESC_BS = _BS + _BS
-_DOUBLED_QUOTES_RE = re.compile(r'""([^"]+?)""')
+_DOUBLED_QUOTES_RE = re.compile(r'(?:(?<=^)|(?<=[\s(=,;]))""([^"\s][^"]*?)""(?=$|[\s);,])')
+
+
+def unwrap_doubled_quotes(text: str) -> str:
+    """Unwrap token-delimiting SIEM/QRadar doubled quotes without altering mid-word empty quotes."""
+    if '""' in text:
+        return _DOUBLED_QUOTES_RE.sub(r'"\1"', text)
+    return text
 
 
 def unescape_outer_siem_wrapper(raw_cmd: str) -> str:
@@ -39,9 +46,7 @@ def unescape_outer_siem_wrapper(raw_cmd: str) -> str:
     elif _ESC_QUOTE in text and text.count(_ESC_QUOTE) >= 2:
         text = text.replace(_ESC_QUOTE, '"').replace(_ESC_BS, _BS)
 
-    if '""' in text:
-        text = _DOUBLED_QUOTES_RE.sub(r'"\1"', text)
-    return text
+    return unwrap_doubled_quotes(text)
 
 
 unescape_siem_wrapper = unescape_outer_siem_wrapper
