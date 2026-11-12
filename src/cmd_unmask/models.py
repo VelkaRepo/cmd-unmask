@@ -349,6 +349,7 @@ class BenchmarkReport:
     fpr: float
     p50_ms: float
     p95_ms: float
+    f1_score: float = 0.0
     results: list[FixtureResult] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -362,6 +363,7 @@ class BenchmarkReport:
             "true_negatives": self.true_negatives,
             "precision": round(self.precision, 4),
             "recall": round(self.recall, 4),
+            "f1_score": round(self.f1_score, 4),
             "fpr": round(self.fpr, 4),
             "p50_ms": round(self.p50_ms, 3),
             "p95_ms": round(self.p95_ms, 3),
