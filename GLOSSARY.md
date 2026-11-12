@@ -60,4 +60,20 @@ _Avoid_: Best guess, final string, winner node
 The dependency-free generator that translates unmasked commands, extracted IOCs, and MITRE ATT&CK classifications into portable, vendor-neutral Sigma YAML detection rules.
 _Avoid_: Rule exporter, Sigma writer, signature maker
 
+**Regression Corpus**:
+The versioned, sanitized dataset of malicious stagers and benign administrative command lines with expected triage outcomes used to validate de-obfuscation and classification accuracy over time.
+_Avoid_: Test dump, sample list, training set
+
+**Corpus Fixture**:
+A single labeled entry inside a Regression Corpus pairing a raw command artifact with its expected severity bounds, MITRE ATT&CK techniques, IOCs, and negative-match assertions.
+_Avoid_: Test row, mock alert, data point
+
+**Detection Rigidity Gate**:
+The automated pass/fail threshold check executed during benchmarking that blocks regressions in False Positive rate, detection recall, or per-command latency.
+_Avoid_: Quality check, lint gate, pass threshold
+
+**Benchmark Report**:
+The structured summary emitted by the benchmark runner detailing corpus pass/fail counts, precision, recall, False Positive rate, and p50/p95 latency metrics.
+_Avoid_: Test log, perf dump, stats output
+
 
