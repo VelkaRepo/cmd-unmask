@@ -14,6 +14,7 @@ from cmd_unmask.models import (
     Severity,
     TriageConfig,
 )
+from cmd_unmask.renderer import render_benchmark_summary
 from cmd_unmask.unpacker import unmask_command
 
 
@@ -167,28 +168,4 @@ def run_benchmark(
 
 def render_benchmark_pretty(report: BenchmarkReport, no_color: bool = False) -> str:
     """Render a concise terminal summary of the BenchmarkReport."""
-    green = "" if no_color else "\033[92m"
-    red = "" if no_color else "\033[91m"
-    cyan = "" if no_color else "\033[96m"
-    bold = "" if no_color else "\033[1m"
-    reset = "" if no_color else "\033[0m"
-
-    gate_status = f"{green}PASS{reset}" if report.failed == 0 else f"{red}FAIL{reset}"
-    lines = [
-        f"{bold}{cyan}[cmd-unmask Regression Corpus Benchmark]{reset} Gate: {gate_status}",
-        f"  Fixtures : {report.total} total | {report.passed} passed | {report.failed} failed",
-        f"  Matrix   : TP={report.true_positives} FP={report.false_positives} "
-        f"FN={report.false_negatives} TN={report.true_negatives}",
-        f"  Metrics  : Precision={report.precision:.4f} | Recall={report.recall:.4f} "
-        f"| F1={report.f1_score:.4f} | FPR={report.fpr:.4f}",
-        f"  Latency  : p50={report.p50_ms:.2f}ms | p95={report.p95_ms:.2f}ms",
-    ]
-    failed_items = [r for r in report.results if not r.passed]
-    if failed_items:
-        lines.append(f"{red}  Failures:{reset}")
-        for item in failed_items:
-            lines.append(
-                f"    - {item.fixture_id} ({item.label}, {item.actual_severity.value}): "
-                + "; ".join(item.failures)
-            )
-    return "\n".join(lines)
+    return render_benchmark_summary(report, color=not no_color)

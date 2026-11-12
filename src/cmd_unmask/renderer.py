@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from cmd_unmask.models import Severity, TriageVerdict
+from cmd_unmask.models import BenchmarkReport, Severity, TriageVerdict
 
 _TECHNIQUE_LABELS: dict[str, str] = {
     "root": "Raw Input",
@@ -265,3 +265,43 @@ def render_json(verdicts: list[TriageVerdict], defang: bool = True) -> str:
 def render_jsonl(verdicts: list[TriageVerdict], defang: bool = True) -> str:
     """Render verdicts as line-delimited JSONL."""
     return "\n".join(json.dumps(v.to_dict(defang=defang)) for v in verdicts) + "\n"
+
+
+def render_benchmark_summary(
+    report: BenchmarkReport,
+    color: bool = False,
+    max_fpr: float = 0.0,
+) -> str:
+    """Render a structured summary table for a Regression Corpus BenchmarkReport."""
+    green = "\033[92m" if color else ""
+    red = "\033[91m" if color else ""
+    cyan = "\033[96m" if color else ""
+    bold = "\033[1m" if color else ""
+    reset = "\033[0m" if color else ""
+
+    gate_ok = report.failed == 0 and report.fpr <= max_fpr
+    gate_status = f"{green}PASS{reset}" if gate_ok else f"{red}FAIL{reset}"
+
+    lines = [
+        f"{bold}{cyan}[cmd-unmask Regression Corpus Benchmark]{reset} Gate: {gate_status}",
+        f"  Fixtures : {report.total} total | {report.passed} passed | {report.failed} failed",
+        f"  Matrix   : TP={report.true_positives} FP={report.false_positives} "
+        f"FN={report.false_negatives} TN={report.true_negatives}",
+        f"  Metrics  : Precision={report.precision:.4f} | Recall={report.recall:.4f} "
+        f"| F1={report.f1_score:.4f} | FPR={report.fpr:.4f} (max={max_fpr:.4f})",
+        f"  Latency  : p50={report.p50_ms:.2f}ms | p95={report.p95_ms:.2f}ms",
+    ]
+    failed_items = [r for r in report.results if not r.passed]
+    if failed_items:
+        lines.append(f"{red}  Failures:{reset}")
+        for item in failed_items:
+            lines.append(
+                f"    - {item.fixture_id} ({item.label}, {item.actual_severity.value}): "
+                + "; ".join(item.failures)
+            )
+    return "\n".join(lines) + "\n"
+
+
+def render_benchmark_json(report: BenchmarkReport) -> str:
+    """Render a BenchmarkReport as pretty-printed JSON."""
+    return json.dumps(report.to_dict(), indent=2) + "\n"

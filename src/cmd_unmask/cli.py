@@ -9,10 +9,14 @@ import subprocess
 import sys
 from typing import Sequence
 
+from cmd_unmask.benchmark import load_corpus, run_benchmark
+from cmd_unmask.corpus import load_seed_corpus
 from cmd_unmask.ingestion import ingest_single_command, ingest_source
 from cmd_unmask.models import Severity, TriageConfig, TriageVerdict
 from cmd_unmask.renderer import (
     build_soc_ticket_note,
+    render_benchmark_json,
+    render_benchmark_summary,
     render_json,
     render_jsonl,
     render_markdown,
@@ -202,6 +206,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--sigma-out",
         help="Write synthesized Sigma YAML rule(s) to a file or directory path.",
     )
+    parser.add_argument(
+        "--benchmark",
+        nargs="?",
+        const="__BUILTIN__",
+        default=None,
+        metavar="PATH",
+        help="Run Regression Corpus benchmark against built-in corpus or custom JSON/JSONL file.",
+    )
+    parser.add_argument(
+        "--corpus-dir",
+        default=None,
+        metavar="DIR",
+        help="Load benign.jsonl and malicious.jsonl from a custom corpus directory for --benchmark.",
+    )
+    parser.add_argument(
+        "--max-fpr",
+        type=float,
+        default=0.0,
+        help="Maximum allowed False Positive rate for --benchmark Detection Rigidity Gate (default: 0.0).",
+    )
     return parser
 
 
@@ -216,6 +240,35 @@ def main(argv: Sequence[str] | None = None) -> int:
         defang_iocs=not args.no_defang,
         custom_field=args.field,
     )
+
+    use_color = (
+        not args.no_color
+        and "NO_COLOR" not in os.environ
+        and hasattr(sys.stdout, "isatty")
+        and sys.stdout.isatty()
+    )
+
+    if args.benchmark is not None:
+        try:
+            if args.corpus_dir is not None:
+                fixtures = load_seed_corpus(args.corpus_dir)
+            elif args.benchmark == "__BUILTIN__":
+                fixtures = load_corpus(None)
+            else:
+                fixtures = load_corpus(args.benchmark)
+        except ValueError as exc:
+            sys.stderr.write(f"Benchmark corpus error: {exc}\n")
+            return 1
+
+        report = run_benchmark(fixtures, config=config)
+        if args.format == "json":
+            sys.stdout.write(render_benchmark_json(report))
+        else:
+            sys.stdout.write(render_benchmark_summary(report, color=use_color, max_fpr=args.max_fpr))
+
+        if report.failed > 0 or report.fpr > args.max_fpr:
+            return 2
+        return 0
 
     records = []
     if args.cmd is not None:
@@ -256,12 +309,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         verdicts.append(verdict)
 
     defang = not args.no_defang
-    use_color = (
-        not args.no_color
-        and "NO_COLOR" not in os.environ
-        and hasattr(sys.stdout, "isatty")
-        and sys.stdout.isatty()
-    )
 
     sigma_rules = []
     if args.sigma or args.sigma_out:
