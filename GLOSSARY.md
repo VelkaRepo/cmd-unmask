@@ -76,4 +76,16 @@ _Avoid_: Quality check, lint gate, pass threshold
 The structured summary emitted by the benchmark runner detailing corpus pass/fail counts, precision, recall, False Positive rate, and p50/p95 latency metrics.
 _Avoid_: Test log, perf dump, stats output
 
+**Process Lineage Context**:
+The optional execution metadata (`parent_image`, `parent_command`, `image`) from Event ID 4688, Sysmon Event ID 1, or CLI `--parent` capturing who spawned the target process.
+_Avoid_: Process tree dump, parent metadata, fork info
+
+**Staging Path Anomaly**:
+Execution of a binary or script from a non-standard, user-writable, or temporary directory (such as `\Users\Public\`, `\AppData\Local\Temp\`, `\ProgramData\`, `/tmp/`, or `/dev/shm/`) rather than canonical OS directories.
+_Avoid_: Temp folder, weird path, bad directory
+
+**Spawn Matrix**:
+The deterministic mapping of suspicious parent-child process relationships (e.g., Office macros or web servers spawning shell interpreters) to MITRE ATT&CK techniques and risk weights.
+_Avoid_: Parent blacklist, process ruleset, spawn list
+
 
