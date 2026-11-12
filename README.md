@@ -6,7 +6,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-80%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-81%20passed-success.svg)](#)
 
 [Install](#installation) · [Usage](#usage) · [How it works](#how-it-works) · [Limitations](#limitations)
 
@@ -111,6 +111,7 @@ pip install -e .
 | `--benchmark` | `[PATH]` | Run Regression Corpus benchmark on built-in corpus or custom JSON/JSONL file | None |
 | `--corpus-dir` | `DIR` | Load `benign.jsonl` and `malicious.jsonl` from a custom corpus directory | None |
 | `--max-fpr` | `FLOAT` | Maximum allowed False Positive rate for `--benchmark` Detection Rigidity Gate | `0.0` |
+| `-v`, `--verbose` | — | Print row-by-row fixture results in `--benchmark` summary output | `False` |
 | `-h`, `--help` | — | Show CLI help message and exit | — |
 
 ### 1. Clipboard & Interactive Mode (Avoids Local CLI Inspection Blocks)
@@ -153,6 +154,9 @@ Validate de-obfuscation accuracy, Precision/Recall/F1, False Positive Rate (FPR)
 ```bash
 # Run built-in Regression Corpus benchmark (exits 2 if any fixture fails or FPR > 0.0)
 cmd-unmask --benchmark
+
+# Run with row-by-row fixture breakdown
+cmd-unmask --benchmark --verbose
 
 # Run against a custom corpus directory with JSON output for CI gates
 cmd-unmask --benchmark --corpus-dir ./my_corpus --max-fpr 0.0 --format json
