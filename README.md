@@ -6,7 +6,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-42%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-68%20passed-success.svg)](#)
 
 [Install](#installation) · [Usage](#usage) · [How it works](#how-it-works) · [Limitations](#limitations)
 
