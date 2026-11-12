@@ -18,6 +18,7 @@ from cmd_unmask.renderer import (
     render_markdown,
     render_pretty,
 )
+from cmd_unmask.sigma import generate_sigma_rule, render_sigma_yaml, render_sigma_yaml_bundle
 from cmd_unmask.unpacker import unmask_command
 
 _CF_UNICODETEXT = 13
@@ -192,6 +193,15 @@ def build_parser() -> argparse.ArgumentParser:
         choices=["LOW", "MEDIUM", "HIGH", "CRITICAL"],
         help="Exit with status code 2 if any verdict meets or exceeds this severity threshold (or is UNKNOWN).",
     )
+    parser.add_argument(
+        "--sigma",
+        action="store_true",
+        help="Synthesize and print Sigma YAML detection rule(s) to stdout for non-benign findings.",
+    )
+    parser.add_argument(
+        "--sigma-out",
+        help="Write synthesized Sigma YAML rule(s) to a file or directory path.",
+    )
     return parser
 
 
@@ -253,7 +263,41 @@ def main(argv: Sequence[str] | None = None) -> int:
         and sys.stdout.isatty()
     )
 
-    if args.format == "json":
+    sigma_rules = []
+    if args.sigma or args.sigma_out:
+        for v in verdicts:
+            rule = generate_sigma_rule(v)
+            if rule is not None:
+                sigma_rules.append(rule)
+
+    if args.sigma_out:
+        out_path = args.sigma_out
+        is_dir_target = (
+            os.path.isdir(out_path)
+            or out_path.endswith(("/", "\\"))
+            or (not os.path.exists(out_path) and not os.path.splitext(out_path)[1])
+        )
+        try:
+            if is_dir_target:
+                os.makedirs(out_path, exist_ok=True)
+                for idx, rule in enumerate(sigma_rules, start=1):
+                    file_name = f"sigma_{idx:03d}_{rule.id[:8]}.yml"
+                    with open(os.path.join(out_path, file_name), "w", encoding="utf-8") as fh:
+                        fh.write(render_sigma_yaml(rule))
+            else:
+                parent_dir = os.path.dirname(out_path)
+                if parent_dir:
+                    os.makedirs(parent_dir, exist_ok=True)
+                with open(out_path, "w", encoding="utf-8") as fh:
+                    fh.write(render_sigma_yaml_bundle(sigma_rules))
+        except OSError as exc:
+            sys.stderr.write(f"Failed to write Sigma output to {out_path}: {exc}\n")
+            return 1
+
+    if args.sigma:
+        yaml_output = render_sigma_yaml_bundle(sigma_rules)
+        sys.stdout.write(yaml_output if yaml_output else "# No non-benign findings to synthesize.\n")
+    elif args.format == "json":
         sys.stdout.write(render_json(verdicts, defang=defang))
     elif args.format == "jsonl":
         sys.stdout.write(render_jsonl(verdicts, defang=defang))

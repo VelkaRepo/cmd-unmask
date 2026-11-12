@@ -143,6 +143,10 @@ class UnpackingDAG:
     truncated: bool = False
     warnings: list[str] = field(default_factory=list)
 
+    def add_node(self, node: PayloadNode) -> None:
+        """Register a PayloadNode in the DAG."""
+        self.nodes[node.node_id] = node
+
     def get_provenance_chain(self, target_node_id: str | None = None) -> list[ProvenanceStep]:
         """Return ordered ProvenanceStep chain from root to target_node_id (defaults to primary_leaf_id)."""
         node_id = target_node_id or self.primary_leaf_id or self.root_id
@@ -255,3 +259,21 @@ class TriageVerdict:
             },
             "warnings": list(self.warnings),
         }
+
+
+@dataclass
+class SigmaRule:
+    """Portable, vendor-neutral Sigma detection rule synthesized from a TriageVerdict."""
+
+    title: str
+    id: str
+    status: str = "experimental"
+    description: str = ""
+    references: list[str] = field(default_factory=list)
+    author: str = "cmd-unmask"
+    date: str = ""
+    tags: list[str] = field(default_factory=list)
+    logsource: dict[str, str] = field(default_factory=dict)
+    detection: dict[str, Any] = field(default_factory=dict)
+    falsepositives: list[str] = field(default_factory=lambda: ["Unknown"])
+    level: str = "medium"
