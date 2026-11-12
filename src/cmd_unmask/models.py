@@ -277,3 +277,93 @@ class SigmaRule:
     detection: dict[str, Any] = field(default_factory=dict)
     falsepositives: list[str] = field(default_factory=lambda: ["Unknown"])
     level: str = "medium"
+
+
+@dataclass
+class CorpusFixture:
+    """Labeled command-line fixture inside a Regression Corpus."""
+
+    fixture_id: str
+    label: str
+    command: str
+    expected_severity: Severity | None = None
+    min_severity: Severity | None = None
+    max_severity: Severity | None = None
+    expected_techniques: list[str] = field(default_factory=list)
+    expected_iocs: list[str] = field(default_factory=list)
+    must_not_match: list[str] = field(default_factory=list)
+    description: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fixture_id": self.fixture_id,
+            "label": self.label,
+            "command": self.command,
+            "expected_severity": self.expected_severity.value if self.expected_severity else None,
+            "min_severity": self.min_severity.value if self.min_severity else None,
+            "max_severity": self.max_severity.value if self.max_severity else None,
+            "expected_techniques": list(self.expected_techniques),
+            "expected_iocs": list(self.expected_iocs),
+            "must_not_match": list(self.must_not_match),
+            "description": self.description,
+        }
+
+
+@dataclass
+class FixtureResult:
+    """Evaluation outcome for a single CorpusFixture."""
+
+    fixture_id: str
+    label: str
+    passed: bool
+    actual_severity: Severity
+    actual_risk_score: int
+    latency_ms: float
+    failures: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "fixture_id": self.fixture_id,
+            "label": self.label,
+            "passed": self.passed,
+            "actual_severity": self.actual_severity.value,
+            "actual_risk_score": self.actual_risk_score,
+            "latency_ms": round(self.latency_ms, 3),
+            "failures": list(self.failures),
+        }
+
+
+@dataclass
+class BenchmarkReport:
+    """Structured summary emitted by the Regression Corpus benchmark runner."""
+
+    total: int
+    passed: int
+    failed: int
+    true_positives: int
+    false_positives: int
+    false_negatives: int
+    true_negatives: int
+    precision: float
+    recall: float
+    fpr: float
+    p50_ms: float
+    p95_ms: float
+    results: list[FixtureResult] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "total": self.total,
+            "passed": self.passed,
+            "failed": self.failed,
+            "true_positives": self.true_positives,
+            "false_positives": self.false_positives,
+            "false_negatives": self.false_negatives,
+            "true_negatives": self.true_negatives,
+            "precision": round(self.precision, 4),
+            "recall": round(self.recall, 4),
+            "fpr": round(self.fpr, 4),
+            "p50_ms": round(self.p50_ms, 3),
+            "p95_ms": round(self.p95_ms, 3),
+            "results": [item.to_dict() for item in self.results],
+        }
