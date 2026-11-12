@@ -226,6 +226,12 @@ def build_parser() -> argparse.ArgumentParser:
         default=0.0,
         help="Maximum allowed False Positive rate for --benchmark Detection Rigidity Gate (default: 0.0).",
     )
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="Print row-by-row fixture results in --benchmark summary output.",
+    )
     return parser
 
 
@@ -264,7 +270,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.format == "json":
             sys.stdout.write(render_benchmark_json(report))
         else:
-            sys.stdout.write(render_benchmark_summary(report, color=use_color, max_fpr=args.max_fpr))
+            sys.stdout.write(
+                render_benchmark_summary(
+                    report,
+                    color=use_color,
+                    max_fpr=args.max_fpr,
+                    verbose=args.verbose,
+                )
+            )
 
         if report.failed > 0 or report.fpr > args.max_fpr:
             return 2

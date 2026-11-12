@@ -115,10 +115,11 @@ class TestCorpusSchemaAndSeedDataset(unittest.TestCase):
 
         benign = load_corpus_file(benign_path)
         malicious = load_corpus_file(malicious_path)
-        self.assertGreaterEqual(len(benign), 8)
-        self.assertGreaterEqual(len(malicious), 8)
+        self.assertGreaterEqual(len(benign), 25)
+        self.assertGreaterEqual(len(malicious), 25)
         self.assertTrue(all(f.label == "benign" for f in benign))
         self.assertTrue(all(f.label == "malicious" for f in malicious))
+        self.assertTrue(all(f.category != "uncategorized" for f in benign + malicious))
 
         combined = load_seed_corpus()
         self.assertEqual(len(combined), len(benign) + len(malicious))

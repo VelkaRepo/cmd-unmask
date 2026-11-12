@@ -293,11 +293,13 @@ class CorpusFixture:
     expected_iocs: list[str] = field(default_factory=list)
     must_not_match: list[str] = field(default_factory=list)
     description: str = ""
+    category: str = "uncategorized"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "fixture_id": self.fixture_id,
             "label": self.label,
+            "category": self.category,
             "command": self.command,
             "expected_severity": self.expected_severity.value if self.expected_severity else None,
             "min_severity": self.min_severity.value if self.min_severity else None,
@@ -320,11 +322,13 @@ class FixtureResult:
     actual_risk_score: int
     latency_ms: float
     failures: list[str] = field(default_factory=list)
+    category: str = "uncategorized"
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "fixture_id": self.fixture_id,
             "label": self.label,
+            "category": self.category,
             "passed": self.passed,
             "actual_severity": self.actual_severity.value,
             "actual_risk_score": self.actual_risk_score,
@@ -350,6 +354,7 @@ class BenchmarkReport:
     p50_ms: float
     p95_ms: float
     f1_score: float = 0.0
+    category_stats: dict[str, dict[str, Any]] = field(default_factory=dict)
     results: list[FixtureResult] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -367,5 +372,6 @@ class BenchmarkReport:
             "fpr": round(self.fpr, 4),
             "p50_ms": round(self.p50_ms, 3),
             "p95_ms": round(self.p95_ms, 3),
+            "category_stats": dict(self.category_stats),
             "results": [item.to_dict() for item in self.results],
         }

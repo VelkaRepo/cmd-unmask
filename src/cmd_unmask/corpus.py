@@ -51,6 +51,10 @@ def parse_corpus_record(record: dict[str, Any]) -> CorpusFixture:
     if not isinstance(description, str):
         raise ValueError("Field 'description' must be a string")
 
+    category = record.get("category", "uncategorized")
+    if not isinstance(category, str) or not category.strip():
+        raise ValueError("Field 'category' must be a non-empty string")
+
     return CorpusFixture(
         fixture_id=fixture_id.strip(),
         label=label.strip().lower(),
@@ -62,6 +66,7 @@ def parse_corpus_record(record: dict[str, Any]) -> CorpusFixture:
         expected_iocs=_parse_str_list(record.get("expected_iocs"), "expected_iocs"),
         must_not_match=_parse_str_list(record.get("must_not_match"), "must_not_match"),
         description=description,
+        category=category.strip(),
     )
 
 

@@ -65,7 +65,7 @@ class TestBenchmarkRunnerAndMetrics(unittest.TestCase):
     def test_seed_corpus_passes_with_zero_fpr(self):
         fixtures = load_seed_corpus()
         report = run_benchmark(fixtures)
-        self.assertGreaterEqual(report.total, 16)
+        self.assertGreaterEqual(report.total, 50)
         self.assertEqual(report.failed, 0, f"Seed corpus failures: {[r for r in report.results if not r.passed]}")
         self.assertEqual(report.false_positives, 0)
         self.assertEqual(report.false_negatives, 0)
@@ -73,6 +73,11 @@ class TestBenchmarkRunnerAndMetrics(unittest.TestCase):
         self.assertAlmostEqual(report.recall, 1.0, places=4)
         self.assertAlmostEqual(report.f1_score, 1.0, places=4)
         self.assertAlmostEqual(report.fpr, 0.0, places=4)
+        self.assertGreaterEqual(len(report.category_stats), 4)
+        for stats in report.category_stats.values():
+            self.assertIn("accuracy", stats)
+            self.assertIn("p50_ms", stats)
+            self.assertEqual(stats["failed"], 0)
 
     def test_render_benchmark_pretty(self):
         fixtures = load_seed_corpus()[:2]
@@ -142,11 +147,26 @@ class TestBenchmarkRunnerAndMetrics(unittest.TestCase):
             self.assertEqual(rc_err, 1)
 
     def test_renderer_benchmark_summary_table(self):
-        report = run_benchmark(load_seed_corpus()[:2])
+        report = run_benchmark(load_seed_corpus()[:4])
         summary = render_benchmark_summary(report, color=False)
         self.assertIn("Precision", summary)
         self.assertIn("FPR", summary)
         self.assertIn("p95", summary)
+        self.assertIn("Category Breakdown", summary)
+
+        verbose_summary = render_benchmark_summary(report, color=False, verbose=True)
+        self.assertIn("Fixture Results", verbose_summary)
+        self.assertIn("ben-001", verbose_summary)
+
+    def test_cli_benchmark_verbose_flag(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            rc = cli_main(["--benchmark", "--verbose", "--no-color"])
+        self.assertEqual(rc, 0)
+        out = buf.getvalue()
+        self.assertIn("Category Breakdown", out)
+        self.assertIn("Fixture Results", out)
+        self.assertIn("mal-001", out)
 
 
 if __name__ == "__main__":

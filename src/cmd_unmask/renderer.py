@@ -271,11 +271,14 @@ def render_benchmark_summary(
     report: BenchmarkReport,
     color: bool = False,
     max_fpr: float = 0.0,
+    verbose: bool = False,
 ) -> str:
     """Render a structured summary table for a Regression Corpus BenchmarkReport."""
     green = "\033[92m" if color else ""
     red = "\033[91m" if color else ""
+    yellow = "\033[93m" if color else ""
     cyan = "\033[96m" if color else ""
+    dim = "\033[2m" if color else ""
     bold = "\033[1m" if color else ""
     reset = "\033[0m" if color else ""
 
@@ -284,15 +287,49 @@ def render_benchmark_summary(
 
     lines = [
         f"{bold}{cyan}[cmd-unmask Regression Corpus Benchmark]{reset} Gate: {gate_status}",
-        f"  Fixtures : {report.total} total | {report.passed} passed | {report.failed} failed",
+        f"  Fixtures : {report.total} total | {green}{report.passed} passed{reset} | "
+        f"{(red if report.failed else dim)}{report.failed} failed{reset}",
         f"  Matrix   : TP={report.true_positives} FP={report.false_positives} "
         f"FN={report.false_negatives} TN={report.true_negatives}",
         f"  Metrics  : Precision={report.precision:.4f} | Recall={report.recall:.4f} "
         f"| F1={report.f1_score:.4f} | FPR={report.fpr:.4f} (max={max_fpr:.4f})",
         f"  Latency  : p50={report.p50_ms:.2f}ms | p95={report.p95_ms:.2f}ms",
     ]
+
+    if report.category_stats:
+        lines.append("")
+        lines.append(f"{bold}Category Breakdown:{reset}")
+        lines.append(
+            f"  {'Category':<24} {'Total':>5} {'Pass':>5} {'Fail':>5} {'Acc':>8} {'p50(ms)':>8} {'Avg(ms)':>8}"
+        )
+        lines.append(f"  {'-' * 67}")
+        for cat, stats in report.category_stats.items():
+            acc_pct = f"{stats['accuracy'] * 100.0:.1f}%"
+            cat_color = green if stats["failed"] == 0 else red
+            lines.append(
+                f"  {cat:<24} {stats['total']:>5} {cat_color}{stats['passed']:>5}{reset} "
+                f"{stats['failed']:>5} {acc_pct:>8} {stats['p50_ms']:>8.2f} {stats['avg_ms']:>8.2f}"
+            )
+
+    if verbose and report.results:
+        lines.append("")
+        lines.append(f"{bold}Fixture Results:{reset}")
+        lines.append(
+            f"  {'Status':<6} {'ID':<12} {'Category':<22} {'Label':<10} {'Actual':<9} {'Score':>5} {'ms':>7}"
+        )
+        lines.append(f"  {'-' * 77}")
+        for item in report.results:
+            status_txt = f"{green}PASS{reset}" if item.passed else f"{red}FAIL{reset}"
+            sev_color = yellow if item.actual_severity.rank >= Severity.MEDIUM.rank else dim
+            lines.append(
+                f"  {status_txt:<6} {item.fixture_id:<12} {item.category:<22} "
+                f"{item.label:<10} {sev_color}{item.actual_severity.value:<9}{reset} "
+                f"{item.actual_risk_score:>5} {item.latency_ms:>7.2f}"
+            )
+
     failed_items = [r for r in report.results if not r.passed]
     if failed_items:
+        lines.append("")
         lines.append(f"{red}  Failures:{reset}")
         for item in failed_items:
             lines.append(

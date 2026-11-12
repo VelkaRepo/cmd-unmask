@@ -60,6 +60,7 @@ def evaluate_fixture(
             actual_risk_score=0,
             latency_ms=elapsed_ms,
             failures=[f"Unhandled exception during unmask_command: {exc}"],
+            category=fixture.category,
         )
     elapsed_ms = (time.perf_counter() - start) * 1000.0
 
@@ -104,6 +105,7 @@ def evaluate_fixture(
         actual_risk_score=verdict.risk_score,
         latency_ms=elapsed_ms,
         failures=failures,
+        category=fixture.category,
     )
 
 
@@ -148,6 +150,25 @@ def run_benchmark(
     p50_ms = compute_percentile(latencies, 50.0)
     p95_ms = compute_percentile(latencies, 95.0)
 
+    grouped: dict[str, list[FixtureResult]] = {}
+    for res in results:
+        grouped.setdefault(res.category, []).append(res)
+
+    category_stats: dict[str, dict[str, object]] = {}
+    for cat in sorted(grouped):
+        items = grouped[cat]
+        cat_passed = sum(1 for item in items if item.passed)
+        cat_failed = len(items) - cat_passed
+        cat_latencies = [item.latency_ms for item in items]
+        category_stats[cat] = {
+            "total": len(items),
+            "passed": cat_passed,
+            "failed": cat_failed,
+            "accuracy": round(cat_passed / len(items), 4) if items else 0.0,
+            "avg_ms": round(sum(cat_latencies) / len(cat_latencies), 3) if cat_latencies else 0.0,
+            "p50_ms": round(compute_percentile(cat_latencies, 50.0), 3),
+        }
+
     return BenchmarkReport(
         total=total,
         passed=passed,
@@ -162,6 +183,7 @@ def run_benchmark(
         p50_ms=p50_ms,
         p95_ms=p95_ms,
         f1_score=f1_score,
+        category_stats=category_stats,
         results=results,
     )
 
