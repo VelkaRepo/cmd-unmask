@@ -128,6 +128,10 @@ _Avoid_: Fake exe, spoofed path, renamed binary
 Artifact-specific, actionable Tier-1/Tier-2 SOC triage and containment steps generated deterministically from observed IOCs, file paths, process lineage, and MITRE ATT&CK techniques.
 _Avoid_: Generic checklist, AI advice, remediation script
 
+**Tactical Triage HUD**:
+The top-down terminal presentation layout in `render_pretty()` that surfaces Verdict, Risk Score, Process Chain, and Executive Brief inside a framed summary header, followed by sequentially numbered `[1]`..`[N]` evidence sections, smart empty-section collapsing, strict `--no-color` ASCII fallback, and a compact clipboard-copy banner.
+_Avoid_: Pretty printer, ASCII art, dashboard dump
+
 
 
 
