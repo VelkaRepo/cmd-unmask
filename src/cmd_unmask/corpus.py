@@ -55,6 +55,12 @@ def parse_corpus_record(record: dict[str, Any]) -> CorpusFixture:
     if not isinstance(category, str) or not category.strip():
         raise ValueError("Field 'category' must be a non-empty string")
 
+    def _opt_str(val: Any) -> str | None:
+        if not isinstance(val, str):
+            return None
+        s = val.strip()
+        return s if s else None
+
     return CorpusFixture(
         fixture_id=fixture_id.strip(),
         label=label.strip().lower(),
@@ -67,6 +73,9 @@ def parse_corpus_record(record: dict[str, Any]) -> CorpusFixture:
         must_not_match=_parse_str_list(record.get("must_not_match"), "must_not_match"),
         description=description,
         category=category.strip(),
+        image=_opt_str(record.get("image")),
+        parent_image=_opt_str(record.get("parent_image")),
+        parent_command=_opt_str(record.get("parent_command")),
     )
 
 

@@ -232,6 +232,21 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print row-by-row fixture results in --benchmark summary output.",
     )
+    parser.add_argument(
+        "--parent",
+        default=None,
+        help="Optional parent process image/name for single or clipboard triage (e.g. winword.exe).",
+    )
+    parser.add_argument(
+        "--parent-cmd",
+        default=None,
+        help="Optional parent process command line for single or clipboard triage.",
+    )
+    parser.add_argument(
+        "--image",
+        default=None,
+        help="Optional target process image path for single or clipboard triage.",
+    )
     return parser
 
 
@@ -285,15 +300,39 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     records = []
     if args.cmd is not None:
-        records.append(ingest_single_command(args.cmd, source_id="cli"))
+        records.append(
+            ingest_single_command(
+                args.cmd,
+                source_id="cli",
+                image=args.image,
+                parent_image=args.parent,
+                parent_command=args.parent_cmd,
+            )
+        )
     elif args.paste:
         clip_text = get_clipboard_text()
-        records.append(ingest_single_command(clip_text, source_id="clipboard"))
+        records.append(
+            ingest_single_command(
+                clip_text,
+                source_id="clipboard",
+                image=args.image,
+                parent_image=args.parent,
+                parent_command=args.parent_cmd,
+            )
+        )
     elif args.file is not None:
         records.extend(ingest_source(args.file, custom_field=args.field))
     elif not sys.stdin.isatty():
         stdin_text = sys.stdin.read()
-        records.append(ingest_single_command(stdin_text, source_id="stdin"))
+        records.append(
+            ingest_single_command(
+                stdin_text,
+                source_id="stdin",
+                image=args.image,
+                parent_image=args.parent,
+                parent_command=args.parent_cmd,
+            )
+        )
     else:
         try:
             sys.stderr.write("Paste obfuscated command (or press Enter to read from clipboard): ")
@@ -302,11 +341,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         except EOFError:
             typed = ""
         if typed:
-            records.append(ingest_single_command(typed, source_id="interactive"))
+            records.append(
+                ingest_single_command(
+                    typed,
+                    source_id="interactive",
+                    image=args.image,
+                    parent_image=args.parent,
+                    parent_command=args.parent_cmd,
+                )
+            )
         else:
             clip_text = get_clipboard_text()
             if clip_text and clip_text.strip():
-                records.append(ingest_single_command(clip_text, source_id="clipboard"))
+                records.append(
+                    ingest_single_command(
+                        clip_text,
+                        source_id="clipboard",
+                        image=args.image,
+                        parent_image=args.parent,
+                        parent_command=args.parent_cmd,
+                    )
+                )
             else:
                 parser.print_help(sys.stderr)
                 return 1
@@ -318,6 +373,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             config=config,
             source_id=rec.source_id,
             initial_warnings=rec.warnings,
+            image=rec.image or args.image,
+            parent_image=rec.parent_image or args.parent,
+            parent_command=rec.parent_command or args.parent_cmd,
         )
         verdicts.append(verdict)
 

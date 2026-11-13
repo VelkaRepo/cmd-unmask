@@ -18,6 +18,33 @@ DEFAULT_SIEM_FIELDS: tuple[str, ...] = (
     "payload",
 )
 
+DEFAULT_IMAGE_FIELDS: tuple[str, ...] = (
+    "Image",
+    "NewProcessName",
+    "image",
+    "process.executable",
+    "data.win.eventdata.image",
+)
+
+DEFAULT_PARENT_IMAGE_FIELDS: tuple[str, ...] = (
+    "ParentImage",
+    "ParentProcessName",
+    "parent_image",
+    "parentImage",
+    "process.parent.executable",
+    "data.win.eventdata.parentImage",
+)
+
+DEFAULT_PARENT_COMMAND_FIELDS: tuple[str, ...] = (
+    "ParentCommandLine",
+    "parent_command",
+    "parent_command_line",
+    "parentCommandLine",
+    "parentCommand",
+    "process.parent.command_line",
+    "data.win.eventdata.parentCommandLine",
+)
+
 
 _BS = chr(92)
 _ESC_QUOTE = _BS + '"'
@@ -52,17 +79,59 @@ def unescape_outer_siem_wrapper(raw_cmd: str) -> str:
 unescape_siem_wrapper = unescape_outer_siem_wrapper
 
 
-def _extract_field_from_mapping(obj: dict[str, Any], field_path: str) -> str | None:
+def _normalize_optional_str(value: Any) -> str | None:
+    """Normalize optional string metadata to stripped non-empty text or None."""
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    return stripped if stripped else None
+
+
+def _extract_field_from_mapping(
+    obj: dict[str, Any],
+    field_path: str,
+    case_insensitive: bool = False,
+) -> str | None:
     """Resolve flat or dotted field path inside a JSON mapping."""
     if field_path in obj and isinstance(obj[field_path], str):
         return obj[field_path]
     curr: Any = obj
     for part in field_path.split("."):
-        if isinstance(curr, dict) and part in curr:
+        if not isinstance(curr, dict):
+            return None
+        if part in curr:
             curr = curr[part]
+        elif case_insensitive:
+            target_lower = part.lower()
+            matched = next(
+                (v for k, v in curr.items() if isinstance(k, str) and k.lower() == target_lower),
+                None,
+            )
+            if matched is None:
+                return None
+            curr = matched
         else:
             return None
     return curr if isinstance(curr, str) else None
+
+
+def _extract_first_optional(obj: dict[str, Any], candidate_fields: tuple[str, ...]) -> str | None:
+    """Extract and normalize the first matching optional string field from a SIEM mapping."""
+    for key in candidate_fields:
+        val = _extract_field_from_mapping(obj, key, case_insensitive=True)
+        norm = _normalize_optional_str(val)
+        if norm is not None:
+            return norm
+    return None
+
+
+def _extract_lineage(obj: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
+    """Extract (image, parent_image, parent_command) from a SIEM/EDR JSON record."""
+    return (
+        _extract_first_optional(obj, DEFAULT_IMAGE_FIELDS),
+        _extract_first_optional(obj, DEFAULT_PARENT_IMAGE_FIELDS),
+        _extract_first_optional(obj, DEFAULT_PARENT_COMMAND_FIELDS),
+    )
 
 
 def _record_from_json_obj(
@@ -89,6 +158,7 @@ def _record_from_json_obj(
             command_text="",
             warnings=[f"Unsupported JSON record type: {type(obj).__name__}."],
         )
+    image, parent_image, parent_command = _extract_lineage(obj)
     for key in candidate_fields:
         val = _extract_field_from_mapping(obj, key)
         if val is not None:
@@ -99,6 +169,9 @@ def _record_from_json_obj(
                 raw_input=clean_raw_input,
                 command_text=cleaned,
                 warnings=warnings,
+                image=image,
+                parent_image=parent_image,
+                parent_command=parent_command,
             )
     return IngestionRecord(
         source_id=source_id,
@@ -107,10 +180,19 @@ def _record_from_json_obj(
         warnings=[
             f"Command field not found in JSON record (checked: {', '.join(candidate_fields)})."
         ],
+        image=image,
+        parent_image=parent_image,
+        parent_command=parent_command,
     )
 
 
-def ingest_single_command(raw_cmd: str, source_id: str = "cli") -> IngestionRecord:
+def ingest_single_command(
+    raw_cmd: str,
+    source_id: str = "cli",
+    image: str | None = None,
+    parent_image: str | None = None,
+    parent_command: str | None = None,
+) -> IngestionRecord:
     """Ingest a single command string from CLI or stdin."""
     warnings: list[str] = []
     raw_str = raw_cmd if isinstance(raw_cmd, str) else ""
@@ -124,6 +206,9 @@ def ingest_single_command(raw_cmd: str, source_id: str = "cli") -> IngestionReco
         raw_input=raw_str,
         command_text=text,
         warnings=warnings,
+        image=_normalize_optional_str(image),
+        parent_image=_normalize_optional_str(parent_image),
+        parent_command=_normalize_optional_str(parent_command),
     )
 
 

@@ -681,6 +681,9 @@ def unmask_command(
     config: TriageConfig | None = None,
     source_id: str = "cli",
     initial_warnings: list[str] | None = None,
+    image: str | None = None,
+    parent_image: str | None = None,
+    parent_command: str | None = None,
 ) -> TriageVerdict:
     """Execute the end-to-end static de-obfuscation and triage pipeline on a command."""
     cfg = config or TriageConfig()
@@ -703,6 +706,9 @@ def unmask_command(
                 severity=Severity.UNKNOWN,
                 risk_score=0,
                 warnings=warnings,
+                image=image,
+                parent_image=parent_image,
+                parent_command=parent_command,
             )
 
         dag = unpack_dag(raw_cmd, cfg)
@@ -725,6 +731,9 @@ def unmask_command(
             risk_score=risk_score,
             severity=severity,
             warnings=warnings,
+            image=image,
+            parent_image=parent_image,
+            parent_command=parent_command,
         )
     except Exception as exc:  # Defensive fallback per engineering standards
         warnings.append(f"Pipeline error: {exc}")
@@ -742,4 +751,7 @@ def unmask_command(
             severity=Severity.UNKNOWN,
             risk_score=0,
             warnings=warnings,
+            image=image,
+            parent_image=parent_image,
+            parent_command=parent_command,
         )
