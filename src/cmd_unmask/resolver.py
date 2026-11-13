@@ -71,9 +71,21 @@ _ARRAY_OP_JOIN_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Adjacent string concatenation: 'a' + "b"
+# Adjacent string concatenation: 'a' + "b" or VBScript 'a' & "b"
 _STR_CONCAT_RE = re.compile(
-    rf"({_QUOTED_STR_PAT})\s*\+\s*({_QUOTED_STR_PAT})"
+    rf"({_QUOTED_STR_PAT})\s*[&+]\s*({_QUOTED_STR_PAT})"
+)
+
+# VBScript Chr(N) / ChrW(N) with decimal, &H hex, or simple bounded integer arithmetic
+_VBS_CHR_RE = re.compile(
+    r"\b(?:ChrW|Chr)\s*\(\s*(&H[0-9a-fA-F]+|0x[0-9a-fA-F]+|\d+(?:\s*[+\-*]\s*\d+){0,3})\s*\)",
+    re.IGNORECASE,
+)
+
+# VBScript Execute(...) / ExecuteGlobal(...) / Eval(...) wrapper
+_VBS_EXEC_WRAPPER_RE = re.compile(
+    rf"\b(?:ExecuteGlobal|Execute|Eval)\s*\(\s*({_QUOTED_STR_PAT})\s*\)",
+    re.IGNORECASE,
 )
 
 # Format operator: "{1}{0}" -f 'a', 'b'
@@ -514,6 +526,40 @@ def _resolve_ps_symbol_table(text: str) -> tuple[str, set[str]]:
     return "".join(rebuilt), reducers
 
 
+def _eval_vbs_int(expr: str) -> int | None:
+    """Safely evaluate a VBScript Chr/ChrW integer literal or bounded +,-,* expression."""
+    tok = expr.strip()
+    if tok.lower().startswith("&h"):
+        try:
+            return int(tok[2:], 16)
+        except ValueError:
+            return None
+    if tok.lower().startswith("0x"):
+        return _parse_int(tok)
+    if re.fullmatch(r"\d+", tok):
+        return int(tok, 10)
+    # Simple left-to-right bounded arithmetic (+, -, *) on unsigned ints
+    parts = re.split(r"\s*([+\-*])\s*", tok)
+    if len(parts) < 3 or len(parts) % 2 == 0:
+        return None
+    try:
+        acc = int(parts[0], 10)
+        for idx in range(1, len(parts), 2):
+            op = parts[idx]
+            rhs = int(parts[idx + 1], 10)
+            if op == "+":
+                acc += rhs
+            elif op == "-":
+                acc -= rhs
+            elif op == "*":
+                acc *= rhs
+            if abs(acc) > 0x10FFFF * 4:
+                return None
+        return acc
+    except ValueError:
+        return None
+
+
 def _is_printable_text(text: str, min_ratio: float = 0.85) -> bool:
     """Return True if decoded payload is predominantly printable ASCII/whitespace."""
     if not text:
@@ -805,6 +851,25 @@ def _fold_pass(text: str) -> tuple[str, set[str]]:
         return decoded
 
     curr = _BASH_PRINTF_ESC_RE.sub(_repl_bash_printf, curr)
+
+    # 17. VBScript Chr(N)/ChrW(N) and Execute/ExecuteGlobal/Eval wrapper unwrapping
+    def _repl_vbs_chr(m: re.Match[str]) -> str:
+        code = _eval_vbs_int(m.group(1))
+        if code is None or not (0 <= code <= 0x10FFFF) or code in (9, 10, 13):
+            return m.group(0)
+        reducers.add("vbs_chr_cast")
+        return _quote_single(chr(code))
+
+    curr = _VBS_CHR_RE.sub(_repl_vbs_chr, curr)
+
+    def _repl_vbs_exec(m: re.Match[str]) -> str:
+        inner = _unquote(m.group(1))
+        if not inner:
+            return m.group(0)
+        reducers.add("vbs_exec_unwrap")
+        return inner
+
+    curr = _VBS_EXEC_WRAPPER_RE.sub(_repl_vbs_exec, curr)
 
     return curr, reducers
 

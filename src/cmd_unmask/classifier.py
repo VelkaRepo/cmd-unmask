@@ -126,6 +126,28 @@ _NODE_RULES: tuple[_BehavioralRule, ...] = (
         ),
     ),
     _BehavioralRule(
+        rule_id="VBSCRIPT_EXEC",
+        name="VBScript / WSH Offensive Script Execution",
+        mitre_id="T1059.005",
+        tactic="Execution",
+        weight=30,
+        pattern=re.compile(
+            r"(?:\b(?:ExecuteGlobal|Execute)\s*\(|vbscript:|WScript\.Shell\b|CreateObject\s*\(\s*['\"](?:WScript\.Shell|Shell\.Application|MSXML2\.XMLHTTP|WinHttp\.WinHttpRequest|ADODB\.Stream)['\"])",
+            re.IGNORECASE,
+        ),
+    ),
+    _BehavioralRule(
+        rule_id="JSCRIPT_EXEC",
+        name="JScript / ActiveX Script Execution",
+        mitre_id="T1059.007",
+        tactic="Execution",
+        weight=30,
+        pattern=re.compile(
+            r"(?:javascript:|ActiveXObject\s*\(\s*['\"](?:WScript\.Shell|Shell\.Application|MSXML2\.XMLHTTP|WinHttp\.WinHttpRequest|ADODB\.Stream)['\"]|\beval\s*\(\s*(?:unescape|atob|String\.fromCharCode))",
+            re.IGNORECASE,
+        ),
+    ),
+    _BehavioralRule(
         rule_id="LOLBIN_REGSVR32",
         name="Regsvr32 Squiblydoo / Proxy Execution",
         mitre_id="T1218.010",
