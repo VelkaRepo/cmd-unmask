@@ -6,7 +6,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-103%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-116%20passed-success.svg)](#)
 
 [Install](#installation) · [Usage](#usage) · [How it works](#how-it-works) · [Limitations](#limitations)
 
@@ -103,6 +103,7 @@ pip install -e .
 | `--field` | `NAME` | Custom JSON field name containing the command line | Auto-detect |
 | `--format` | `CHOICE` | Output format (`pretty`, `markdown`, `json`, `jsonl`) | `pretty` |
 | `--copy-note` | — | Copy the Ready-to-Paste SOC Ticket Note to the OS clipboard | `False` |
+| `--full` | — | Print complete multi-line unmasked payloads without head/tail truncation | `False` |
 | `--no-color` | — | Disable ANSI colors in pretty terminal output | `False` |
 | `--no-defang` | — | Emit raw IOCs instead of defanged IOCs | `False` |
 | `--max-depth` | `INT` | Maximum Unpacking DAG recursion depth | `10` |
