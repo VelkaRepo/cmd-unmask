@@ -273,8 +273,165 @@ def classify_node_text(text: str, source_node_id: str = "node_0") -> list[Behavi
     return matches
 
 
+_SHELL_AND_LOLBIN_CHILDREN: frozenset[str] = frozenset(
+    {
+        "cmd.exe",
+        "powershell.exe",
+        "pwsh.exe",
+        "wscript.exe",
+        "cscript.exe",
+        "mshta.exe",
+        "rundll32.exe",
+        "regsvr32.exe",
+        "certutil.exe",
+        "bitsadmin.exe",
+        "msiexec.exe",
+        "wmic.exe",
+        "sh",
+        "bash",
+        "dash",
+        "zsh",
+        "ash",
+    }
+)
+
+
+@dataclass(frozen=True)
+class _SpawnMatrixEntry:
+    rule_id: str
+    name: str
+    mitre_id: str
+    tactic: str
+    weight: int
+    parents: frozenset[str]
+
+
+_SPAWN_MATRIX: tuple[_SpawnMatrixEntry, ...] = (
+    _SpawnMatrixEntry(
+        rule_id="LINEAGE_OFFICE_SPAWN",
+        name="Suspicious Office / Document Reader Child Process",
+        mitre_id="T1566.001",
+        tactic="Initial Access",
+        weight=45,
+        parents=frozenset(
+            {
+                "winword.exe",
+                "excel.exe",
+                "powerpnt.exe",
+                "outlook.exe",
+                "onenote.exe",
+                "msaccess.exe",
+                "mspub.exe",
+                "acrord32.exe",
+                "acrobat.exe",
+                "foxitreader.exe",
+            }
+        ),
+    ),
+    _SpawnMatrixEntry(
+        rule_id="LINEAGE_WEBSERVER_SPAWN",
+        name="Web or Database Server Spawning Shell / LOLBin",
+        mitre_id="T1505.003",
+        tactic="Persistence",
+        weight=50,
+        parents=frozenset(
+            {
+                "w3wp.exe",
+                "httpd",
+                "httpd.exe",
+                "nginx",
+                "nginx.exe",
+                "apache2",
+                "tomcat.exe",
+                "sqlservr.exe",
+                "mysqld",
+                "mysqld.exe",
+                "postgres",
+                "postgres.exe",
+            }
+        ),
+    ),
+    _SpawnMatrixEntry(
+        rule_id="LINEAGE_WMI_SPAWN",
+        name="WMI Provider Host Spawning Shell / LOLBin",
+        mitre_id="T1047",
+        tactic="Execution",
+        weight=40,
+        parents=frozenset({"wmiprvse.exe"}),
+    ),
+    _SpawnMatrixEntry(
+        rule_id="LINEAGE_ARCHIVE_SPAWN",
+        name="Archive Utility Spawning Shell / Script Engine",
+        mitre_id="T1204.002",
+        tactic="Execution",
+        weight=35,
+        parents=frozenset({"7z.exe", "7zg.exe", "winrar.exe", "rar.exe"}),
+    ),
+)
+
+
+def _extract_basename(path_or_name: str | None) -> str:
+    if not path_or_name or not isinstance(path_or_name, str):
+        return ""
+    cleaned = path_or_name.strip().strip("\"'")
+    if not cleaned:
+        return ""
+    return re.split(r"[\\/]", cleaned)[-1].lower()
+
+
+def _infer_child_basename(image: str | None, root_command: str) -> str:
+    if image:
+        base = _extract_basename(image)
+        if base:
+            return base
+    stripped = (root_command or "").strip()
+    if not stripped:
+        return ""
+    if stripped[0] in ('"', "'"):
+        quote = stripped[0]
+        end = stripped.find(quote, 1)
+        token = stripped[1:end] if end != -1 else stripped[1:]
+    else:
+        token = stripped.split()[0]
+    return _extract_basename(token)
+
+
+def classify_process_lineage(
+    parent_image: str | None,
+    image: str | None = None,
+    root_command: str = "",
+) -> list[BehavioralMatch]:
+    """Evaluate deterministic parent-child Spawn Matrix rules."""
+    parent_base = _extract_basename(parent_image)
+    if not parent_base:
+        return []
+    child_base = _infer_child_basename(image, root_command)
+    if not child_base or child_base not in _SHELL_AND_LOLBIN_CHILDREN:
+        return []
+
+    matches: list[BehavioralMatch] = []
+    for entry in _SPAWN_MATRIX:
+        if parent_base in entry.parents:
+            matches.append(
+                BehavioralMatch(
+                    rule_id=entry.rule_id,
+                    name=entry.name,
+                    mitre_id=entry.mitre_id,
+                    tactic=entry.tactic,
+                    weight=entry.weight,
+                    evidence=f"{parent_base} -> {child_base}",
+                    source_node_id="node_0",
+                )
+            )
+    return matches
+
+
 def classify_dag(
-    dag: UnpackingDAG, iocs: list[ExtractedIOC] | None = None
+    dag: UnpackingDAG,
+    iocs: list[ExtractedIOC] | None = None,
+    image: str | None = None,
+    parent_image: str | None = None,
+    parent_command: str | None = None,
 ) -> list[BehavioralMatch]:
     """Classify obfuscation mechanics and payload behaviors across the entire UnpackingDAG."""
     if iocs is None:
@@ -322,6 +479,14 @@ def classify_dag(
             if hit.rule_id not in seen_rules:
                 seen_rules.add(hit.rule_id)
                 matches.append(hit)
+
+    # Stage 2b: Process Lineage Spawn Matrix
+    root_node = dag.nodes.get(dag.root_id)
+    root_cmd = root_node.text if root_node else ""
+    for hit in classify_process_lineage(parent_image=parent_image, image=image, root_command=root_cmd):
+        if hit.rule_id not in seen_rules:
+            seen_rules.add(hit.rule_id)
+            matches.append(hit)
 
     # Stage 3: Contextual T1105 suppression for cloud metadata queries
     if "CLOUD_METADATA_QUERY" in seen_rules or "CLOUD_METADATA_CREDENTIALS" in seen_rules:
