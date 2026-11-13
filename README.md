@@ -6,8 +6,8 @@
 
 [![Python 3.10+ stdlib-only](https://img.shields.io/badge/python-3.10%2B%20stdlib--only-blue.svg)](#)
 [![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-130%20passed-success.svg)](#)
-[![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(62%20fixtures)-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-142%20passed-success.svg)](#)
+[![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(67%20fixtures)-brightgreen.svg)](#)
 
 [Quickstart](#quickstart) · [Architecture](#architecture) · [Detection Rigidity](#detection-rigidity) · [CLI Reference](#cli-reference) · [ADRs](docs/adr/README.md)
 
@@ -137,7 +137,7 @@ MITRE ATT&CK  :
 <a id="detection-rigidity"></a>
 ## Detection Coverage & False-Positive Rigidity
 
-Validated against 62 labeled corpus fixtures (`32` malicious, `30` benign enterprise commands) with `Precision=1.0000`, `Recall=1.0000`, `FPR=0.0000`, and `p50 < 1ms` per command.
+Validated against 67 labeled corpus fixtures (`35` malicious, `32` benign enterprise commands) with `Precision=1.0000`, `Recall=1.0000`, `FPR=0.0000`, and `p50 < 1ms` per command.
 
 | Mechanism | Threat / Operational Coverage | False-Positive Rigidity |
 | :--- | :--- | :--- |
@@ -145,7 +145,8 @@ Validated against 62 labeled corpus fixtures (`32` malicious, `30` benign enterp
 | **Process Lineage & Staging** | Office (`WINWORD.EXE`), web server (`w3wp.exe`), WMI (`WmiPrvSE.exe`) spawn matrix; `\Users\Public\`, `\AppData\Local\Temp\`, `/dev/shm/` staging | Canonical OS/admin parents (`explorer.exe -> cmd.exe`, `services.exe -> svchost.exe`) and `Program Files` paths never trigger |
 | **Win32 P/Invoke vs. VA Audit** | Flags offensive memory-injection APIs (`VirtualAlloc`, `WriteProcessMemory`, `CreateRemoteThread`, `OpenProcess` — `T1055`) | **Authorized Audit Baseline** recognizes read-only Nessus/VA `Netapi32.dll` (`NetGetJoinInformation`, `NetApiBufferFree`) checks as `BENIGN (0/100)` |
 | **Contextual IOC Extraction** | URLs, domains, IPv4/IPv6, file paths, MD5/SHA1/SHA256, and cloud metadata SSRF (`169.254.169.254`) | Suppresses `.NET` namespaces (`Net.WebClient`), hex blobs, and link-local-only metadata queries from `T1105` escalation |
-| **Analyst Clarity & Sigma** | Non-IOC capabilities (file writes, P/Invoke, registry, process, network), explicit `Verdict Rationale`, and vendor-neutral Sigma YAML | Machine formats (`json`, `jsonl`) remain strictly pure; smart head/tail truncation avoids terminal flooding (`--full` overrides) |
+| **Analyst Clarity & Sigma** | Non-IOC capabilities, explicit `Verdict Rationale`, `[ANALYST EXECUTIVE BRIEF]`, `[RECOMMENDED L1/L2 NEXT STEPS]`, and vendor-neutral Sigma YAML | Machine formats (`json`, `jsonl`) remain strictly pure; smart head/tail truncation avoids terminal flooding (`--full` overrides) |
+| **Domain Knowledge & Masquerading** | Static 46-LOLBin/flag catalog, RFC1918 vs. metadata vs. external network classification, and `T1036.005` binary masquerading | Canonical OS directories (`System32`, `SysWOW64`, `/usr/bin`) and bare binary names never trigger masquerading |
 
 ---
 
@@ -205,7 +206,7 @@ Matches `python -m cmd_unmask --help`:
 ### Development & Testing
 
 ```bash
-# Run full unit and integration test suite (130 tests)
+# Run full unit and integration test suite (142 tests)
 python -m unittest discover -s tests -v
 
 # Run Regression Corpus benchmark and Detection Rigidity Gate
