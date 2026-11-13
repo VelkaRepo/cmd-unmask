@@ -104,5 +104,14 @@ _Avoid_: Behavior dump, API log, capability tags
 The explicit, human-readable explanation recorded on a Triage Verdict detailing why a command scored `BENIGN` (such as Authorized Audit Baseline suppression) or why specific behavioral rules escalated its severity.
 _Avoid_: Reason string, debug note, justification text
 
+**Zero-Flag Triage**:
+The frictionless CLI execution model where running `cmd-unmask` without flags automatically reads from stdin pipe, positional file/command target, or OS clipboard while preserving full compatibility with explicit flags.
+_Avoid_: Flagless mode, magic mode, auto-cli
+
+**Auto-SIEM Clipboard Ingestion**:
+Automatic detection and structured parsing of SIEM/EDR JSON or JSONL event payloads pasted into the OS clipboard or positional input, extracting `CommandLine`, `ParentImage`, `ParentCommandLine`, and `Image` without requiring `-f`.
+_Avoid_: Smart paste, JSON sniffer, clipboard parser
+
+
 
 
