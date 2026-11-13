@@ -66,6 +66,14 @@ def _humanize_evidence(evidence: str, node_labels: dict[str, str]) -> str:
     return evidence
 
 
+def _format_process_chain(verdict: TriageVerdict) -> str | None:
+    """Format parent -> child process chain when parent_image is present."""
+    if not verdict.parent_image:
+        return None
+    child = verdict.image or "<command>"
+    return f"{verdict.parent_image} -> {child}"
+
+
 def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True) -> str:
     """Generate a compact, ready-to-paste SOC ticket note block for QRadar/MSA offense notes."""
     timeline, _ = build_unmasking_timeline(verdict)
@@ -82,10 +90,17 @@ def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True) -> str:
         f"[SOC TRIAGE NOTE - {verdict.source_id}]",
         f"Verdict       : {verdict.severity.value} (Risk Score: {verdict.risk_score}/100)",
         f"Obfuscation   : {unmask_summary}",
-        f"Raw Command   : {raw_display}",
-        "Unmasked Cmd  :",
-        f"  {verdict.primary_unmasked_payload}",
     ]
+    process_chain = _format_process_chain(verdict)
+    if process_chain:
+        lines.append(f"Process Chain : {process_chain}")
+    lines.extend(
+        [
+            f"Raw Command   : {raw_display}",
+            "Unmasked Cmd  :",
+            f"  {verdict.primary_unmasked_payload}",
+        ]
+    )
 
     if verdict.iocs:
         lines.append("Extracted IOCs:")
@@ -148,9 +163,16 @@ def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: boo
             f"{c_cyan}{top_bar}{c_reset}",
             f"{c_cyan}║{c_reset}{sc}{header_title.ljust(box_width)}{c_reset}{c_cyan}║{c_reset}",
             f"{c_cyan}{bot_bar}{c_reset}",
-            "",
-            f"{c_bold}{c_cyan}[1] UNMASKING TIMELINE (LAYER-BY-LAYER){c_reset}",
         ]
+        process_chain = _format_process_chain(verdict)
+        if process_chain:
+            lines.append(f"{c_bold}Process Chain:{c_reset} {process_chain}")
+        lines.extend(
+            [
+                "",
+                f"{c_bold}{c_cyan}[1] UNMASKING TIMELINE (LAYER-BY-LAYER){c_reset}",
+            ]
+        )
 
         for idx, (step_num, label, text_val) in enumerate(timeline):
             is_last = idx == len(timeline) - 1
@@ -217,10 +239,17 @@ def render_markdown(verdicts: list[TriageVerdict], defang: bool = True) -> str:
         lines: list[str] = [
             f"## Triage Verdict [{verdict.source_id}]",
             f"- **Severity**: `{verdict.severity.value}` (Risk Score: `{verdict.risk_score}/100`)",
-            f"- **Original Command**: `{verdict.original_command}`",
-            f"- **Primary Unmasked Payload**: `{verdict.primary_unmasked_payload}`",
-            "- **Unmasking Timeline**:",
         ]
+        process_chain = _format_process_chain(verdict)
+        if process_chain:
+            lines.append(f"- **Process Chain**: `{process_chain}`")
+        lines.extend(
+            [
+                f"- **Original Command**: `{verdict.original_command}`",
+                f"- **Primary Unmasked Payload**: `{verdict.primary_unmasked_payload}`",
+                "- **Unmasking Timeline**:",
+            ]
+        )
         for step_num, label, text_val in timeline:
             lines.append(f"  - **Step {step_num} [{label}]**: `{text_val}`")
 

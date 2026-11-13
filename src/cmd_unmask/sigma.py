@@ -145,6 +145,21 @@ def _extract_selection_keywords(verdict: TriageVerdict, max_keywords: int = 8) -
     return keywords[:max_keywords]
 
 
+def _format_parent_image_endswith(parent_image: str | None) -> str | None:
+    """Normalize parent_image into a portable Sigma ParentImage|endswith pattern."""
+    if not parent_image or not isinstance(parent_image, str):
+        return None
+    cleaned = parent_image.strip().strip("\"'")
+    if not cleaned:
+        return None
+    base = re.split(r"[\\/]", cleaned)[-1].lower()
+    if not base:
+        return None
+    if "/" in cleaned and "\\" not in cleaned:
+        return f"*/{base}"
+    return f"*\\{base}"
+
+
 def generate_sigma_rule(
     verdict: TriageVerdict,
     author: str = "cmd-unmask",
@@ -176,6 +191,9 @@ def generate_sigma_rule(
     )
 
     selection: dict[str, Any] = {}
+    parent_suffix = _format_parent_image_endswith(verdict.parent_image)
+    if parent_suffix:
+        selection["ParentImage|endswith"] = parent_suffix
     if image_suffix:
         selection["Image|endswith"] = image_suffix
     if keywords:
