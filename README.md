@@ -6,7 +6,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-81%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-96%20passed-success.svg)](#)
 
 [Install](#installation) · [Usage](#usage) · [How it works](#how-it-works) · [Limitations](#limitations)
 
@@ -112,6 +112,9 @@ pip install -e .
 | `--corpus-dir` | `DIR` | Load `benign.jsonl` and `malicious.jsonl` from a custom corpus directory | None |
 | `--max-fpr` | `FLOAT` | Maximum allowed False Positive rate for `--benchmark` Detection Rigidity Gate | `0.0` |
 | `-v`, `--verbose` | — | Print row-by-row fixture results in `--benchmark` summary output | `False` |
+| `--parent` | `IMAGE` | Optional parent process image/name for single or clipboard triage (e.g. `winword.exe`) | None |
+| `--parent-cmd` | `TEXT` | Optional parent process command line for single or clipboard triage | None |
+| `--image` | `PATH` | Optional target process image path for single or clipboard triage | None |
 | `-h`, `--help` | — | Show CLI help message and exit | — |
 
 ### 1. Clipboard & Interactive Mode (Avoids Local CLI Inspection Blocks)
@@ -160,6 +163,14 @@ cmd-unmask --benchmark --verbose
 
 # Run against a custom corpus directory with JSON output for CI gates
 cmd-unmask --benchmark --corpus-dir ./my_corpus --max-fpr 0.0 --format json
+```
+
+### 5. Parent-Child Process Lineage & Staging Path Triage
+Supply Event ID 4688 / Sysmon EID 1 lineage context via SIEM JSON/JSONL ingestion or manually via `--parent` and `--image`:
+
+```bash
+# Flag Office or Web Server spawning a shell/LOLBin and emit Sigma ParentImage selection
+cmd-unmask -c "cmd.exe /c whoami" --parent "C:\Windows\System32\inetsrv\w3wp.exe" --sigma
 ```
 
 ---
