@@ -1,6 +1,6 @@
 import unittest
 
-from cmd_unmask.classifier import classify_dag, classify_process_lineage
+from cmd_unmask.classifier import classify_dag, classify_process_lineage, classify_staging_path
 from cmd_unmask.models import PayloadNode, Severity, UnpackingDAG
 from cmd_unmask.unpacker import unmask_command
 
@@ -75,6 +75,53 @@ class TestParentChildSpawnMatrix(unittest.TestCase):
         )
         self.assertEqual(verdict_svc.severity, Severity.BENIGN)
         self.assertEqual(verdict_svc.behavioral_matches, [])
+
+
+class TestStagingPathAnomaly(unittest.TestCase):
+    def test_windows_staging_paths_in_image_and_command(self):
+        win_cases = [
+            ("C:\\Users\\Public\\payload.exe", "payload.exe"),
+            ("C:\\ProgramData\\update.exe", "update.exe"),
+            ("C:\\Users\\alice\\AppData\\Local\\Temp\\dropper.exe", "dropper.exe"),
+            ("C:\\Windows\\Temp\\stage.bat", "stage.bat"),
+            ("C:\\PerfLogs\\beacon.exe", "beacon.exe"),
+        ]
+        for img, cmd in win_cases:
+            hits = classify_staging_path(img, cmd)
+            self.assertEqual(len(hits), 1, f"Expected staging hit for {img}")
+            self.assertEqual(hits[0].rule_id, "STAGING_PATH_ANOMALY")
+            self.assertEqual(hits[0].mitre_id, "T1036.005")
+
+        # Unmasked command referencing staging path even when image is System32 powershell
+        verdict = unmask_command(
+            "powershell.exe -File C:\\Users\\Public\\stage.ps1",
+            image="C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        )
+        self.assertTrue(any(m.rule_id == "STAGING_PATH_ANOMALY" for m in verdict.behavioral_matches))
+        self.assertGreaterEqual(verdict.risk_score, 25)
+
+    def test_linux_staging_paths_in_image_and_command(self):
+        for path in ("/tmp/implant", "/dev/shm/loader.sh", "/var/tmp/run.py"):
+            verdict = unmask_command(f"{path} --quiet", image=path)
+            self.assertTrue(
+                any(m.rule_id == "STAGING_PATH_ANOMALY" and m.mitre_id == "T1036.005" for m in verdict.behavioral_matches),
+                f"Expected staging hit for {path}",
+            )
+
+    def test_benign_canonical_and_allowlisted_paths_counter_examples(self):
+        benign_cases = [
+            ("C:\\Windows\\System32\\ipconfig.exe", "ipconfig.exe /all"),
+            ("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", 'powershell.exe -File "C:\\Program Files\\Vendor\\script.ps1"'),
+            ("/usr/bin/python3", "/usr/bin/python3 --version"),
+            ("C:\\ProgramData\\chocolatey\\bin\\choco.exe", "choco.exe upgrade all -y"),
+            (None, "dir C:\\Windows\\System32"),
+        ]
+        for img, cmd in benign_cases:
+            verdict = unmask_command(cmd, image=img)
+            self.assertFalse(
+                any(m.rule_id == "STAGING_PATH_ANOMALY" for m in verdict.behavioral_matches),
+                f"False positive staging hit on {img} / {cmd}",
+            )
 
 
 if __name__ == "__main__":

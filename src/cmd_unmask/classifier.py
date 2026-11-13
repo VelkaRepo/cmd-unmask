@@ -426,6 +426,49 @@ def classify_process_lineage(
     return matches
 
 
+_STAGING_PATH_RE = re.compile(
+    r"(?:"
+    r"[a-zA-Z]:\\(?:users\\public|programdata|windows\\temp|perflogs|users\\[^\\/\s]+\\appdata\\local\\temp)\\[^\s\"']*"
+    r"|\\(?:users\\public|programdata|windows\\temp|perflogs|appdata\\local\\temp)\\[^\s\"']*"
+    r"|(?:^|[\s\"'=])(?:/tmp/|/dev/shm/|/var/tmp/)[^\s\"']*"
+    r")",
+    re.IGNORECASE,
+)
+
+_BENIGN_STAGING_ALLOWLIST_RE = re.compile(
+    r"\\programdata\\(?:chocolatey|microsoft)\\",
+    re.IGNORECASE,
+)
+
+
+def classify_staging_path(
+    image: str | None = None,
+    text: str = "",
+    source_node_id: str = "node_0",
+) -> list[BehavioralMatch]:
+    """Detect binary execution or payload references in world-writable staging directories."""
+    for candidate in (image or "", text or ""):
+        if not candidate:
+            continue
+        for m in _STAGING_PATH_RE.finditer(candidate):
+            matched_path = m.group(0).strip().lstrip("=\"'")
+            if _BENIGN_STAGING_ALLOWLIST_RE.search(matched_path):
+                continue
+            evidence = matched_path if len(matched_path) <= 120 else matched_path[:117] + "..."
+            return [
+                BehavioralMatch(
+                    rule_id="STAGING_PATH_ANOMALY",
+                    name="Execution or Staging from World-Writable / Temp Directory",
+                    mitre_id="T1036.005",
+                    tactic="Defense Evasion",
+                    weight=25,
+                    evidence=evidence,
+                    source_node_id=source_node_id,
+                )
+            ]
+    return []
+
+
 def classify_dag(
     dag: UnpackingDAG,
     iocs: list[ExtractedIOC] | None = None,
@@ -487,6 +530,21 @@ def classify_dag(
         if hit.rule_id not in seen_rules:
             seen_rules.add(hit.rule_id)
             matches.append(hit)
+
+    # Stage 2c: World-Writable Staging Path Anomaly (image + all DAG nodes)
+    if "STAGING_PATH_ANOMALY" not in seen_rules:
+        for hit in classify_staging_path(image=image, text="", source_node_id=dag.root_id):
+            seen_rules.add(hit.rule_id)
+            matches.append(hit)
+            break
+    if "STAGING_PATH_ANOMALY" not in seen_rules:
+        for node_id, node in dag.nodes.items():
+            for hit in classify_staging_path(image=None, text=node.text, source_node_id=node_id):
+                seen_rules.add(hit.rule_id)
+                matches.append(hit)
+                break
+            if "STAGING_PATH_ANOMALY" in seen_rules:
+                break
 
     # Stage 3: Contextual T1105 suppression for cloud metadata queries
     if "CLOUD_METADATA_QUERY" in seen_rules or "CLOUD_METADATA_CREDENTIALS" in seen_rules:
