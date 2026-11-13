@@ -195,7 +195,7 @@ def render_pretty(
             text,
             width=width,
             subsequent_indent=" " * indent,
-            break_long_words=True,
+            break_long_words=False,
             break_on_hyphens=False,
         )
         return wrapped if wrapped else [text]
@@ -219,7 +219,23 @@ def render_pretty(
             f"Triage Verdict [{verdict.source_id}] | "
             f"Severity: {verdict.severity.value} ({verdict.risk_score}/100)"
         )
-        box_width = max(76, len(header_title) + 2)
+        base_width = max(76, len(header_title) + 2)
+        wrap_limit = base_width - 2
+
+        process_chain = _format_process_chain(verdict)
+        proc_lines = (
+            _wrap_hud(f"Process Chain : {process_chain}", wrap_limit)
+            if process_chain
+            else []
+        )
+        brief_lines = (
+            _wrap_hud(f"Exec Brief    : {verdict.executive_brief}", wrap_limit)
+            if verdict.executive_brief
+            else []
+        )
+
+        all_hud_contents = [header_title, *proc_lines, *brief_lines]
+        box_width = max(base_width, *(len(c) + 2 for c in all_hud_contents))
         inner_wrap = box_width - 2
 
         def _box_row(content: str, style: str = "") -> str:
@@ -229,36 +245,53 @@ def render_pretty(
             f"{c_cyan}{tl}{h * box_width}{tr}{c_reset}",
             _box_row(header_title, sc),
         ]
-        process_chain = _format_process_chain(verdict)
-        if process_chain:
-            for p_line in _wrap_hud(f"Process Chain : {process_chain}", inner_wrap):
-                lines.append(_box_row(p_line, c_bold if p_line.startswith("Process Chain") else ""))
-        if verdict.executive_brief:
+        for p_line in proc_lines:
+            lines.append(_box_row(p_line, c_bold if p_line.startswith("Process Chain") else ""))
+        if brief_lines:
             lines.append(f"{c_cyan}{ml}{h * box_width}{mr}{c_reset}")
-            for b_line in _wrap_hud(f"Exec Brief    : {verdict.executive_brief}", inner_wrap):
+            for b_line in brief_lines:
                 lines.append(_box_row(b_line))
         lines.append(f"{c_cyan}{bl}{h * box_width}{br}{c_reset}")
 
         sec_num = 1
-        lines.extend(
-            [
-                "",
-                f"{c_bold}{c_cyan}[{sec_num}] UNMASKING TIMELINE (LAYER-BY-LAYER){c_reset}",
-            ]
+        collapsed_single_payload = len(timeline) == 1 or (
+            len(timeline) == 2
+            and re.sub(r"\s+", " ", timeline[0][2].strip())
+            == re.sub(r"\s+", " ", timeline[1][2].strip())
         )
-        sec_num += 1
-
-        for idx, (step_num, label, text_val) in enumerate(timeline):
-            is_last = idx == len(timeline) - 1
-            connector = last_conn if is_last else branch
-            tag = " [FINAL UNMASKED PAYLOAD]" if (is_last and len(timeline) > 1) else ""
-            lines.append(
-                f"  {c_cyan}{connector}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
+        if collapsed_single_payload:
+            lines.extend(
+                [
+                    "",
+                    f"{c_bold}{c_cyan}[{sec_num}] PAYLOAD{c_reset}",
+                ]
             )
-            pipe_prefix = "      " if is_last else f"  {c_cyan}{pipe_ch}{c_reset}   "
-            display_text = _truncate_lines(text_val, full=full)
-            for tline in display_text.splitlines() or [""]:
-                lines.append(f"{pipe_prefix}{tline}")
+            sec_num += 1
+            display_text = _truncate_lines(timeline[-1][2], full=full)
+            tlines = display_text.splitlines() or [""]
+            for i, tline in enumerate(tlines):
+                prefix = f"  {c_cyan}{last_conn}{c_reset} " if i == 0 else "      "
+                lines.append(f"{prefix}{tline}")
+        else:
+            lines.extend(
+                [
+                    "",
+                    f"{c_bold}{c_cyan}[{sec_num}] UNMASKING TIMELINE (LAYER-BY-LAYER){c_reset}",
+                ]
+            )
+            sec_num += 1
+
+            for idx, (step_num, label, text_val) in enumerate(timeline):
+                is_last = idx == len(timeline) - 1
+                connector = last_conn if is_last else branch
+                tag = " [FINAL UNMASKED PAYLOAD]" if (is_last and len(timeline) > 1) else ""
+                lines.append(
+                    f"  {c_cyan}{connector}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
+                )
+                pipe_prefix = "      " if is_last else f"  {c_cyan}{pipe_ch}{c_reset}   "
+                display_text = _truncate_lines(text_val, full=full)
+                for tline in display_text.splitlines() or [""]:
+                    lines.append(f"{pipe_prefix}{tline}")
 
         lines.append("")
         if (
@@ -293,21 +326,18 @@ def render_pretty(
             else:
                 lines.append(f"  {c_dim}{last_conn} None (No malicious behavioral indicators matched){c_reset}")
 
-        if verdict.iocs or verdict.severity != Severity.BENIGN:
+        if verdict.iocs:
             ioc_header_mode = "DEFANGED" if defang else "RAW"
             lines.append("")
             lines.append(f"{c_bold}{c_cyan}[{sec_num}] EXTRACTED IOCs ({ioc_header_mode}){c_reset}")
             sec_num += 1
-            if verdict.iocs:
-                for i, ioc in enumerate(verdict.iocs):
-                    conn = last_conn if i == len(verdict.iocs) - 1 else branch
-                    val = ioc.defanged_value if defang else ioc.raw_value
-                    origin_label = node_labels.get(ioc.source_node_id, "Unpacked Layer")
-                    lines.append(
-                        f"  {c_cyan}{conn}{c_reset} [{c_yellow}{ioc.ioc_type}{c_reset}] {c_bold}{val}{c_reset} {c_dim}(from {origin_label}){c_reset}"
-                    )
-            else:
-                lines.append(f"  {c_dim}{last_conn} None{c_reset}")
+            for i, ioc in enumerate(verdict.iocs):
+                conn = last_conn if i == len(verdict.iocs) - 1 else branch
+                val = ioc.defanged_value if defang else ioc.raw_value
+                origin_label = node_labels.get(ioc.source_node_id, "Unpacked Layer")
+                lines.append(
+                    f"  {c_cyan}{conn}{c_reset} [{c_yellow}{ioc.ioc_type}{c_reset}] {c_bold}{val}{c_reset} {c_dim}(from {origin_label}){c_reset}"
+                )
 
         if verdict.playbook_steps:
             lines.append("")

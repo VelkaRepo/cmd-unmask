@@ -412,15 +412,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     defang = not args.no_defang
 
-    is_tty_stdout = hasattr(sys.stdout, "isatty") and sys.stdout.isatty()
-    auto_sigma_eligible = (
-        is_tty_stdout
-        and not args.no_sigma
-        and not args.sigma
-        and not args.sigma_out
-        and args.format in ("pretty", "markdown")
-        and args.file is None
-    )
+    auto_sigma_eligible = False
 
     sigma_rules = []
     if args.sigma or args.sigma_out or auto_sigma_eligible:
@@ -489,10 +481,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
 
-    should_copy = bool(verdicts) and not args.no_copy and (
-        args.copy_note
-        or (is_tty_stdout and args.format in ("pretty", "markdown") and not args.sigma)
-    )
+    should_copy = bool(verdicts) and args.copy_note and not args.no_copy
     if should_copy:
         combined_notes = "\n\n".join(
             build_soc_ticket_note(v, defang=defang, full=args.full) for v in verdicts
@@ -510,12 +499,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stdout.write(
                     f"\n{c_yellow}[!] Clipboard unavailable (use --show-note to print){c_reset}\n"
                 )
-    elif verdicts and args.format == "pretty" and not args.sigma and not args.show_note:
-        c_dim = "\x1b[2m" if use_color else ""
-        c_reset = "\x1b[0m" if use_color else ""
-        sys.stdout.write(
-            f"\n{c_dim}[i] SOC Ticket Note omitted on stdout (use --show-note to print){c_reset}\n"
-        )
 
     if args.fail_on:
         threshold = Severity(args.fail_on)

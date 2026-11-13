@@ -52,9 +52,10 @@ class TestTacticalHudLayout(unittest.TestCase):
         verdict = unmask_command("ipconfig /all", source_id="hud-ben-1")
         out = render_pretty([verdict], color=False)
 
-        self.assertIn("[1] UNMASKING TIMELINE", out)
+        self.assertIn("[1] PAYLOAD", out)
+        self.assertNotIn("[1] UNMASKING TIMELINE", out)
         self.assertIn("[2] BEHAVIORAL EVIDENCE: None", out)
-        self.assertNotIn("[3] EXTRACTED IOCs", out)
+        self.assertNotIn("EXTRACTED IOCs", out)
         self.assertIn("[3] RECOMMENDED L1/L2 NEXT STEPS", out)
         self.assertNotIn("READY-TO-PASTE SOC TICKET NOTE", out)
 
@@ -88,7 +89,7 @@ class TestTacticalHudLayout(unittest.TestCase):
         widths = {len(line) for line in box_lines}
         self.assertEqual(len(widths), 1, f"Jagged HUD box widths: {widths}")
 
-    def test_pretty_default_omits_duplicate_note_and_prints_clipboard_banner(self) -> None:
+    def test_pretty_default_never_overwrites_clipboard_and_omits_banner(self) -> None:
         copied: list[str] = []
         buf = io.StringIO()
         with (
@@ -97,6 +98,23 @@ class TestTacticalHudLayout(unittest.TestCase):
             patch.object(buf, "isatty", return_value=True),
         ):
             rc = cli_main(["-c", "ipconfig /all", "--no-color"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(copied, [])
+        self.assertNotIn("[SOC TRIAGE NOTE", out)
+        self.assertNotIn("copied to clipboard", out)
+        self.assertNotIn("omitted on stdout", out)
+
+    def test_copy_note_flag_copies_to_clipboard_and_prints_banner(self) -> None:
+        copied: list[str] = []
+        buf = io.StringIO()
+        with (
+            patch("cmd_unmask.cli.set_clipboard_text", side_effect=lambda txt: copied.append(txt) or True),
+            redirect_stdout(buf),
+            patch.object(buf, "isatty", return_value=True),
+        ):
+            rc = cli_main(["-c", "ipconfig /all", "--no-color", "--copy-note"])
 
         out = buf.getvalue()
         self.assertEqual(rc, 0)
@@ -118,19 +136,10 @@ class TestTacticalHudLayout(unittest.TestCase):
         self.assertIn("[SOC TRIAGE NOTE", out)
         self.assertIn("Unmasked Cmd  :", out)
 
-    def test_no_copy_prints_show_note_hint_and_json_stays_pure(self) -> None:
-        copied: list[str] = []
-        buf = io.StringIO()
-        with (
-            patch("cmd_unmask.cli.set_clipboard_text", side_effect=lambda txt: copied.append(txt) or True),
-            redirect_stdout(buf),
-            patch.object(buf, "isatty", return_value=True),
-        ):
-            rc = cli_main(["-c", "ipconfig /all", "--no-color", "--no-copy"])
-
-        self.assertEqual(rc, 0)
-        self.assertEqual(copied, [])
-        self.assertIn("use --show-note to print", buf.getvalue())
+    def test_empty_iocs_omitted_on_non_benign_and_json_stays_pure(self) -> None:
+        verdict = unmask_command("powershell.exe -enc VwByAGkAdABlAC0ASABvAHMAdAA=", source_id="hud-noioc-1")
+        out = render_pretty([verdict], color=False)
+        self.assertNotIn("EXTRACTED IOCs", out)
 
         json_buf = io.StringIO()
         with redirect_stdout(json_buf):
