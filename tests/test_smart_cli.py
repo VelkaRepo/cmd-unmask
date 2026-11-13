@@ -83,5 +83,82 @@ class TestZeroFlagInputRouting(unittest.TestCase):
         self.assertIn("echo explicit", buf.getvalue())
 
 
+class TestAutoSiemClipboardAndStdin(unittest.TestCase):
+    """Verify automatic SIEM JSON/JSONL extraction from clipboard/stdin and safe fallback."""
+
+    def test_clipboard_sysmon_json_extracts_command_and_lineage(self) -> None:
+        siem_event = json.dumps(
+            {
+                "CommandLine": "powershell.exe -NoP -Command Get-Date",
+                "ParentImage": "C:\\Program Files\\Microsoft Office\\root\\Office16\\WINWORD.EXE",
+                "Image": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+            }
+        )
+        buf = io.StringIO()
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("cmd_unmask.cli.get_clipboard_text", return_value=siem_event),
+            redirect_stdout(buf),
+        ):
+            rc = cli_main(["--format", "json"])
+        self.assertEqual(rc, 0)
+        data = json.loads(buf.getvalue())
+        self.assertEqual(data["original_command"], "powershell.exe -NoP -Command Get-Date")
+        self.assertIn("WINWORD.EXE", data["parent_image"])
+        self.assertIn("powershell.exe", data["image"])
+        self.assertEqual(data["severity"], "MEDIUM")
+
+    def test_stdin_jsonl_extracts_multiple_siem_records(self) -> None:
+        jsonl_input = (
+            json.dumps({"CommandLine": "ipconfig /all", "Image": "ipconfig.exe"})
+            + "\n"
+            + json.dumps({"CommandLine": "whoami /all", "ParentImage": "w3wp.exe", "Image": "whoami.exe"})
+            + "\n"
+        )
+        buf = io.StringIO()
+        with (
+            patch("sys.stdin", _FakePipeStdin(jsonl_input)),
+            redirect_stdout(buf),
+        ):
+            rc = cli_main(["--format", "jsonl"])
+        self.assertEqual(rc, 0)
+        rows = [json.loads(line) for line in buf.getvalue().strip().splitlines()]
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0]["original_command"], "ipconfig /all")
+        self.assertEqual(rows[1]["parent_image"], "w3wp.exe")
+
+    def test_explicit_parent_override_on_siem_clipboard(self) -> None:
+        siem_event = json.dumps(
+            {
+                "CommandLine": "powershell.exe -NoP -Command Get-Date",
+                "ParentImage": "explorer.exe",
+                "Image": "powershell.exe",
+            }
+        )
+        buf = io.StringIO()
+        with (
+            patch("sys.stdin.isatty", return_value=True),
+            patch("cmd_unmask.cli.get_clipboard_text", return_value=siem_event),
+            redirect_stdout(buf),
+        ):
+            rc = cli_main(["--parent", "winword.exe", "--format", "json"])
+        self.assertEqual(rc, 0)
+        data = json.loads(buf.getvalue())
+        self.assertEqual(data["parent_image"], "winword.exe")
+
+    def test_malformed_json_and_powershell_scriptblock_fallback(self) -> None:
+        for raw_payload in ("{ Write-Host 'hello' }", "{not valid json", "[array_like_literal"):
+            buf = io.StringIO()
+            with (
+                patch("sys.stdin.isatty", return_value=True),
+                patch("cmd_unmask.cli.get_clipboard_text", return_value=raw_payload),
+                redirect_stdout(buf),
+            ):
+                rc = cli_main(["--format", "json"])
+            self.assertEqual(rc, 0)
+            data = json.loads(buf.getvalue())
+            self.assertEqual(data["original_command"], raw_payload)
+
+
 if __name__ == "__main__":
     unittest.main()

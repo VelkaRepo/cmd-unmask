@@ -11,7 +11,7 @@ from typing import Sequence
 
 from cmd_unmask.benchmark import load_corpus, run_benchmark
 from cmd_unmask.corpus import load_seed_corpus
-from cmd_unmask.ingestion import ingest_single_command, ingest_source
+from cmd_unmask.ingestion import ingest_single_command, ingest_source, ingest_text_or_siem
 from cmd_unmask.models import Severity, TriageConfig, TriageVerdict
 from cmd_unmask.renderer import (
     build_soc_ticket_note,
@@ -322,10 +322,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.paste:
         clip_text = get_clipboard_text()
-        records.append(
-            ingest_single_command(
+        records.extend(
+            ingest_text_or_siem(
                 clip_text,
                 source_id="clipboard",
+                custom_field=args.field,
                 image=args.image,
                 parent_image=args.parent,
                 parent_command=args.parent_cmd,
@@ -348,10 +349,11 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
     elif not sys.stdin.isatty():
         stdin_text = sys.stdin.read()
-        records.append(
-            ingest_single_command(
+        records.extend(
+            ingest_text_or_siem(
                 stdin_text,
                 source_id="stdin",
+                custom_field=args.field,
                 image=args.image,
                 parent_image=args.parent,
                 parent_command=args.parent_cmd,
@@ -360,10 +362,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     else:
         clip_text = get_clipboard_text()
         if clip_text and clip_text.strip():
-            records.append(
-                ingest_single_command(
+            records.extend(
+                ingest_text_or_siem(
                     clip_text,
                     source_id="clipboard",
+                    custom_field=args.field,
                     image=args.image,
                     parent_image=args.parent,
                     parent_command=args.parent_cmd,
@@ -380,9 +383,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             config=config,
             source_id=rec.source_id,
             initial_warnings=rec.warnings,
-            image=rec.image or args.image,
-            parent_image=rec.parent_image or args.parent,
-            parent_command=rec.parent_command or args.parent_cmd,
+            image=args.image or rec.image,
+            parent_image=args.parent or rec.parent_image,
+            parent_command=args.parent_cmd or rec.parent_command,
         )
         verdicts.append(verdict)
 

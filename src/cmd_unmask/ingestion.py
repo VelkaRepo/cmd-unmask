@@ -339,3 +339,94 @@ def ingest_source(
     if stdin_text is not None:
         return [ingest_single_command(stdin_text, source_id="stdin")]
     return []
+
+
+def ingest_text_or_siem(
+    raw_text: str,
+    source_id: str = "clipboard",
+    custom_field: str | None = None,
+    image: str | None = None,
+    parent_image: str | None = None,
+    parent_command: str | None = None,
+) -> list[IngestionRecord]:
+    """Auto-detect SIEM JSON/JSONL in raw text (clipboard/stdin) and fall back safely to raw command."""
+    raw_str = raw_text if isinstance(raw_text, str) else ""
+    stripped = raw_str.lstrip("\ufeff").strip()
+    candidate_fields: tuple[str, ...] = (
+        (custom_field,) if custom_field else DEFAULT_SIEM_FIELDS
+    )
+    img_ovr = _normalize_optional_str(image)
+    pimg_ovr = _normalize_optional_str(parent_image)
+    pcmd_ovr = _normalize_optional_str(parent_command)
+
+    def _apply_overrides(recs: list[IngestionRecord]) -> list[IngestionRecord]:
+        for rec in recs:
+            if img_ovr:
+                rec.image = img_ovr
+            if pimg_ovr:
+                rec.parent_image = pimg_ovr
+            if pcmd_ovr:
+                rec.parent_command = pcmd_ovr
+        return recs
+
+    if stripped.startswith("{") or stripped.startswith("["):
+        try:
+            parsed = json.loads(stripped)
+            if isinstance(parsed, dict):
+                rec = _record_from_json_obj(
+                    parsed,
+                    source_id=source_id,
+                    raw_input=stripped,
+                    candidate_fields=candidate_fields,
+                )
+                if rec.command_text.strip():
+                    return _apply_overrides([rec])
+            elif isinstance(parsed, list):
+                recs = [
+                    _record_from_json_obj(
+                        item,
+                        source_id=f"{source_id}:{idx}",
+                        raw_input=json.dumps(item),
+                        candidate_fields=candidate_fields,
+                    )
+                    for idx, item in enumerate(parsed, start=1)
+                    if isinstance(item, dict)
+                ]
+                if recs and any(r.command_text.strip() for r in recs):
+                    return _apply_overrides(recs)
+        except Exception:
+            pass
+
+        lines = [ln.strip() for ln in stripped.splitlines() if ln.strip()]
+        if len(lines) > 1 and all(ln.startswith("{") for ln in lines):
+            jsonl_recs: list[IngestionRecord] = []
+            valid_jsonl = True
+            for idx, ln in enumerate(lines, start=1):
+                try:
+                    item = json.loads(ln)
+                except Exception:
+                    valid_jsonl = False
+                    break
+                if not isinstance(item, dict):
+                    valid_jsonl = False
+                    break
+                jsonl_recs.append(
+                    _record_from_json_obj(
+                        item,
+                        source_id=f"{source_id}:{idx}",
+                        raw_input=ln,
+                        candidate_fields=candidate_fields,
+                    )
+                )
+            if valid_jsonl and jsonl_recs and any(r.command_text.strip() for r in jsonl_recs):
+                return _apply_overrides(jsonl_recs)
+
+    return [
+        ingest_single_command(
+            raw_str,
+            source_id=source_id,
+            image=image,
+            parent_image=parent_image,
+            parent_command=parent_command,
+        )
+    ]
