@@ -6,7 +6,7 @@
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Dependencies: Zero (Stdlib)](https://img.shields.io/badge/dependencies-zero%20(stdlib)-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-116%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-130%20passed-success.svg)](#)
 
 [Install](#installation) · [Usage](#usage) · [How it works](#how-it-works) · [Limitations](#limitations)
 
@@ -103,6 +103,8 @@ pip install -e .
 | `--field` | `NAME` | Custom JSON field name containing the command line | Auto-detect |
 | `--format` | `CHOICE` | Output format (`pretty`, `markdown`, `json`, `jsonl`) | `pretty` |
 | `--copy-note` | — | Copy the Ready-to-Paste SOC Ticket Note to the OS clipboard | `False` |
+| `--no-copy` | — | Disable automatic clipboard copy of SOC Ticket Note on interactive runs | `False` |
+| `--no-sigma` | — | Disable automatic Sigma YAML output on non-benign interactive runs | `False` |
 | `--full` | — | Print complete multi-line unmasked payloads without head/tail truncation | `False` |
 | `--no-color` | — | Disable ANSI colors in pretty terminal output | `False` |
 | `--no-defang` | — | Emit raw IOCs instead of defanged IOCs | `False` |
@@ -122,11 +124,15 @@ pip install -e .
 Passing raw malicious stagers directly as command-line arguments (`-c "powershell -enc ..."`) often triggers local Windows Defender / SentinelOne CLI blocks (`Access is denied`). Ingesting directly from the OS clipboard avoids exposing the payload in the process argument list. Copy the alert command from your SIEM and run:
 
 ```bash
-# Read obfuscated command from OS clipboard, print full analysis, and copy the SOC Ticket Note back to clipboard
-cmd-unmask -p --copy-note
-
-# Or launch interactive mode (paste at prompt, or press Enter to read from clipboard)
+# Zero-flag clipboard triage (auto-parses SIEM JSON/JSONL or raw commands, auto-copies note & emits Sigma)
 cmd-unmask
+
+# Positional auto-detect: raw command string OR SIEM file path
+cmd-unmask "<cmd>"
+cmd-unmask alert.json
+
+# Explicit flags (still 100% supported)
+cmd-unmask -p --copy-note
 ```
 
 ### 2. Single Command & Standard Input
