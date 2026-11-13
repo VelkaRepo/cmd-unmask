@@ -641,3 +641,78 @@ def score_verdict(
         severity = Severity.LOW
 
     return final_score, severity
+
+
+_CAP_DLLIMPORT_RE = re.compile(
+    r"""\[DllImport\(\s*["']([^"']+)["'][^\]]*\)\]\s*(?:public\s+|private\s+|internal\s+)?static\s+extern\s+\S+\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(""",
+    re.IGNORECASE | re.DOTALL,
+)
+_CAP_FILE_WRITE_CMD_RE = re.compile(
+    r"""\b(?:Out-File|Set-Content|Add-Content)\b(?:\s+-(?:FilePath|Path))?\s+["']?([^"'\s;|&]+)["']?""",
+    re.IGNORECASE,
+)
+_CAP_FILE_WRITE_DOTNET_RE = re.compile(
+    r"""\b(?:IO\.File|System\.IO\.File)::WriteAll(?:Bytes|Text|Lines)\s*\(\s*["']([^"']+)["']""",
+    re.IGNORECASE,
+)
+_CAP_REDIRECT_WRITE_RE = re.compile(
+    r"""(?:^|[\s;|&])>{1,2}\s*["']?([A-Za-z]:\\[^"'\s;|&>]+|/(?:tmp|var|dev|etc|home|opt)/[^"'\s;|&>]+)["']?""",
+    re.IGNORECASE,
+)
+_CAP_REG_KEY_RE = re.compile(
+    r"""\b((?:HKLM|HKCU|HKCR|HKU|HKCC|HKEY_LOCAL_MACHINE|HKEY_CURRENT_USER):?\\[^\s"';|&]+)""",
+    re.IGNORECASE,
+)
+_CAP_PROCESS_RE = re.compile(
+    r"""\b(Start-Process|Process\.Start|WScript\.Shell|ShellExecute|Win32_Process)\b""",
+    re.IGNORECASE,
+)
+_CAP_NETWORK_RE = re.compile(
+    r"""\b(Invoke-WebRequest|Invoke-RestMethod|Net\.WebClient|DownloadString|DownloadFile|bitsadmin|certutil(?=\s+.*-urlcache))\b""",
+    re.IGNORECASE,
+)
+
+
+def extract_capabilities(
+    dag: UnpackingDAG,
+    primary_text: str | None = None,
+    max_items: int = 12,
+) -> list[str]:
+    """Extract non-IOC operational capabilities (file writes, P/Invoke, registry, process, network) statically."""
+    texts: list[str] = []
+    if primary_text:
+        texts.append(primary_text)
+    for node in dag.nodes.values():
+        if node.text and node.text not in texts:
+            texts.append(node.text)
+
+    found: list[str] = []
+    seen: set[str] = set()
+
+    def _add(item: str) -> None:
+        if item not in seen and len(found) < max_items:
+            seen.add(item)
+            found.append(item)
+
+    for text in texts:
+        try:
+            for dll, func in _CAP_DLLIMPORT_RE.findall(text):
+                _add(f"Win32 P/Invoke: {dll} -> {func}")
+            for path in _CAP_FILE_WRITE_CMD_RE.findall(text):
+                if not path.startswith("-"):
+                    _add(f"File Write: {path}")
+            for path in _CAP_FILE_WRITE_DOTNET_RE.findall(text):
+                _add(f"File Write: {path}")
+            for path in _CAP_REDIRECT_WRITE_RE.findall(text):
+                _add(f"File Write: {path}")
+            for key in _CAP_REG_KEY_RE.findall(text):
+                _add(f"Registry: {key}")
+            for proc in _CAP_PROCESS_RE.findall(text):
+                _add(f"Process: {proc}")
+            for net in _CAP_NETWORK_RE.findall(text):
+                _add(f"Network: {net}")
+        except Exception:
+            continue
+
+    return found
+

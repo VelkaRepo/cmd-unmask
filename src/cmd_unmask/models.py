@@ -238,6 +238,8 @@ class TriageVerdict:
     image: str | None = None
     parent_image: str | None = None
     parent_command: str | None = None
+    capabilities: list[str] = field(default_factory=list)
+    verdict_rationale: str = ""
 
     def to_dict(self, defang: bool = True) -> dict[str, Any]:
         return {
@@ -249,6 +251,8 @@ class TriageVerdict:
             "image": self.image,
             "parent_image": self.parent_image,
             "parent_command": self.parent_command,
+            "capabilities": list(self.capabilities),
+            "verdict_rationale": self.verdict_rationale,
             "provenance_chain": [step.to_dict() for step in self.provenance_chain],
             "leaf_payloads": list(self.leaf_payloads),
             "iocs": [

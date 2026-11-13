@@ -10,7 +10,7 @@ import zlib
 from collections import deque
 from typing import Any
 
-from cmd_unmask.classifier import classify_dag, classify_node_text, score_verdict
+from cmd_unmask.classifier import classify_dag, classify_node_text, extract_capabilities, score_verdict
 from cmd_unmask.ioc import extract_iocs, extract_iocs_from_text
 from cmd_unmask.models import (
     PayloadNode,
@@ -735,6 +735,7 @@ def unmask_command(
             parent_command=parent_command,
         )
         risk_score, severity = score_verdict(dag, behaviors, harvested_iocs)
+        capabilities = extract_capabilities(dag, primary_text=primary_node.text)
 
         return TriageVerdict(
             source_id=source_id,
@@ -751,6 +752,7 @@ def unmask_command(
             image=image,
             parent_image=parent_image,
             parent_command=parent_command,
+            capabilities=capabilities,
         )
     except Exception as exc:  # Defensive fallback per engineering standards
         warnings.append(f"Pipeline error: {exc}")
