@@ -17,6 +17,7 @@ from cmd_unmask.classifier import (
     extract_capabilities,
     score_verdict,
 )
+from cmd_unmask.correlator import correlate_triage
 from cmd_unmask.ioc import extract_iocs, extract_iocs_from_text
 from cmd_unmask.models import (
     PayloadNode,
@@ -746,6 +747,20 @@ def unmask_command(
         verdict_rationale = build_verdict_rationale(
             dag, behaviors, harvested_iocs, severity, risk_score
         )
+        executive_brief, playbook_steps = correlate_triage(
+            original_command=raw_cmd,
+            primary_unmasked_payload=primary_node.text,
+            dag=dag,
+            iocs=harvested_iocs,
+            behavioral_matches=behaviors,
+            capabilities=capabilities,
+            verdict_rationale=verdict_rationale,
+            severity=severity,
+            risk_score=risk_score,
+            image=image,
+            parent_image=parent_image,
+            defang=cfg.defang_iocs,
+        )
 
         return TriageVerdict(
             source_id=source_id,
@@ -764,6 +779,8 @@ def unmask_command(
             parent_command=parent_command,
             capabilities=capabilities,
             verdict_rationale=verdict_rationale,
+            executive_brief=executive_brief,
+            playbook_steps=playbook_steps,
         )
     except Exception as exc:  # Defensive fallback per engineering standards
         warnings.append(f"Pipeline error: {exc}")
