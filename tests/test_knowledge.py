@@ -7,9 +7,12 @@ import unittest
 from cmd_unmask.knowledge import (
     LOLBIN_PROFILES,
     classify_network_target,
+    detect_binary_masquerading,
     explain_execution_flags,
     lookup_binary_profile,
 )
+from cmd_unmask.models import Severity
+from cmd_unmask.unpacker import unmask_command
 
 
 class TestKnowledgeBaseModule(unittest.TestCase):
@@ -74,6 +77,42 @@ class TestKnowledgeBaseModule(unittest.TestCase):
             "public_external",
         )
         self.assertEqual(classify_network_target("c2.evil.example", "domain"), "public_external")
+
+
+class TestBinaryMasqueradingDetection(unittest.TestCase):
+    """Verify T1036.005 binary masquerading detection and benign counter-examples."""
+
+    def test_masquerading_unit_detection_positive_and_negative(self) -> None:
+        self.assertIsNotNone(detect_binary_masquerading(r"C:\Users\Public\svchost.exe"))
+        self.assertIsNotNone(detect_binary_masquerading("/tmp/sshd"))
+        self.assertIsNotNone(detect_binary_masquerading(r"C:\ProgramData\lsass.exe"))
+
+        self.assertIsNone(detect_binary_masquerading(r"C:\Windows\System32\svchost.exe"))
+        self.assertIsNone(detect_binary_masquerading(r"C:\Windows\SysWOW64\rundll32.exe"))
+        self.assertIsNone(detect_binary_masquerading("/usr/bin/sudo"))
+        self.assertIsNone(detect_binary_masquerading("/bin/sh"))
+        self.assertIsNone(detect_binary_masquerading("svchost.exe"))
+
+    def test_classifier_flags_masquerading_t1036_005(self) -> None:
+        verdict = unmask_command(
+            "svchost.exe -k netsvcs",
+            source_id="masq-1",
+            image=r"C:\Users\Public\svchost.exe",
+        )
+        self.assertNotEqual(verdict.severity, Severity.BENIGN)
+        self.assertIn("T1036.005", [m.mitre_id for m in verdict.behavioral_matches])
+        self.assertIn("BINARY_MASQUERADING", [m.rule_id for m in verdict.behavioral_matches])
+
+    def test_classifier_benign_counter_examples_do_not_trigger_masquerading(self) -> None:
+        cases = (
+            ("svchost.exe -k netsvcs", r"C:\Windows\System32\svchost.exe"),
+            ("sudo id", "/usr/bin/sudo"),
+            ("svchost.exe -k netsvcs", None),
+        )
+        for cmd, img in cases:
+            verdict = unmask_command(cmd, source_id="masq-ben", image=img)
+            self.assertEqual(verdict.severity, Severity.BENIGN)
+            self.assertNotIn("BINARY_MASQUERADING", [m.rule_id for m in verdict.behavioral_matches])
 
 
 if __name__ == "__main__":

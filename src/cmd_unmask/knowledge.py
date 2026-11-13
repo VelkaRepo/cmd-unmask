@@ -180,3 +180,67 @@ def classify_network_target(value: str, ioc_type: str = "") -> str:
             return "trusted_vendor"
 
     return "public_external"
+
+
+_PROTECTED_WINDOWS_BINARIES: frozenset[str] = frozenset(
+    {
+        "svchost.exe",
+        "lsass.exe",
+        "csrss.exe",
+        "services.exe",
+        "smss.exe",
+        "winlogon.exe",
+        "rundll32.exe",
+        "cmd.exe",
+        "powershell.exe",
+        "certutil.exe",
+        "mshta.exe",
+    }
+)
+
+_PROTECTED_LINUX_BINARIES: frozenset[str] = frozenset({"sshd", "sudo", "bash", "sh"})
+
+_TRUSTED_WINDOWS_PREFIXES: tuple[str, ...] = (
+    "/windows/system32/",
+    "/windows/syswow64/",
+    "/windows/winsxs/",
+    "/windows/systemapps/",
+    "/windows/",
+)
+
+_TRUSTED_LINUX_PREFIXES: tuple[str, ...] = (
+    "/usr/bin/",
+    "/bin/",
+    "/usr/sbin/",
+    "/sbin/",
+    "/usr/local/bin/",
+    "/usr/local/sbin/",
+)
+
+
+def detect_binary_masquerading(image: str | None) -> str | None:
+    """Return evidence string if a protected OS binary executes outside canonical OS directories."""
+    if not image or not isinstance(image, str):
+        return None
+    cleaned = image.strip().strip("\"'")
+    if not cleaned or ("\\" not in cleaned and "/" not in cleaned):
+        return None
+
+    normalized = cleaned.replace("\\", "/").lower()
+    if len(normalized) >= 2 and normalized[1] == ":":
+        normalized_no_drive = normalized[2:]
+    else:
+        normalized_no_drive = normalized
+
+    base = normalized_no_drive.rsplit("/", 1)[-1]
+    if base in _PROTECTED_WINDOWS_BINARIES:
+        if any(normalized_no_drive.startswith(prefix) for prefix in _TRUSTED_WINDOWS_PREFIXES):
+            return None
+        return f"Protected Windows binary '{base}' executed from non-canonical path '{cleaned}'"
+
+    if base in _PROTECTED_LINUX_BINARIES:
+        if any(normalized_no_drive.startswith(prefix) for prefix in _TRUSTED_LINUX_PREFIXES):
+            return None
+        return f"Protected Linux binary '{base}' executed from non-canonical path '{cleaned}'"
+
+    return None

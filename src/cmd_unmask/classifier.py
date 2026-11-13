@@ -591,6 +591,24 @@ def classify_dag(
             if "STAGING_PATH_ANOMALY" in seen_rules:
                 break
 
+    # Stage 2d: Binary Masquerading (T1036.005)
+    from cmd_unmask.knowledge import detect_binary_masquerading
+
+    masq_evidence = detect_binary_masquerading(image)
+    if masq_evidence and "BINARY_MASQUERADING" not in seen_rules:
+        seen_rules.add("BINARY_MASQUERADING")
+        matches.append(
+            BehavioralMatch(
+                rule_id="BINARY_MASQUERADING",
+                name="System Binary Masquerading / Non-Canonical Path",
+                mitre_id="T1036.005",
+                tactic="Defense Evasion",
+                weight=45,
+                evidence=masq_evidence,
+                source_node_id=dag.root_id,
+            )
+        )
+
     # Stage 3: Contextual T1105 suppression for cloud metadata queries
     if "CLOUD_METADATA_QUERY" in seen_rules or "CLOUD_METADATA_CREDENTIALS" in seen_rules:
         has_external_host = _has_non_link_local_host(iocs)
