@@ -49,7 +49,14 @@ def evaluate_fixture(
     cfg = config or TriageConfig()
     start = time.perf_counter()
     try:
-        verdict = unmask_command(fixture.command, config=cfg, source_id=fixture.fixture_id)
+        verdict = unmask_command(
+            fixture.command,
+            config=cfg,
+            source_id=fixture.fixture_id,
+            image=fixture.image,
+            parent_image=fixture.parent_image,
+            parent_command=fixture.parent_command,
+        )
     except Exception as exc:  # Defensive isolation for malformed/edge inputs
         elapsed_ms = (time.perf_counter() - start) * 1000.0
         return FixtureResult(
