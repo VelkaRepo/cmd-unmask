@@ -17,17 +17,18 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
 
         buf = io.StringIO()
         with redirect_stdout(buf):
-            exit_code = main(["-c", cmd, "--no-color", "--show-note"])
+            exit_code = main(["-c", cmd, "--no-color", "--show-note", "--full"])
         out = buf.getvalue()
 
         self.assertEqual(exit_code, 0)
         # ASCII box-drawing header and clean bullet markers when --no-color is passed
         self.assertIn("+", out)
         self.assertIn("  - ", out)
-        # Clean 3-section top-down HUD
-        self.assertIn("[1] FINDINGS & EVIDENCE", out)
-        self.assertIn("[2] IOCs & NEXT STEPS", out)
-        self.assertIn("[3] UNMASKED PAYLOAD", out)
+        # Top-down analyst reading flow
+        self.assertIn("[1] UNMASKED COMMAND", out)
+        self.assertIn("[2] THREAT BREAKDOWN", out)
+        self.assertIn("[3] DEFANGED IOCs", out)
+        self.assertIn("[4] NEXT STEPS", out)
         self.assertIn("[+] READY-TO-PASTE SOC TICKET NOTE", out)
 
         # Human-readable step labels and intermediate payloads

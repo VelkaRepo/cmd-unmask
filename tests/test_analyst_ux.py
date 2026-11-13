@@ -212,7 +212,7 @@ class TestRendererDeduplicationAndTruncation(unittest.TestCase):
         for output in (pretty, note, md):
             self.assertIn("Netapi32.dll -> NetGetJoinInformation", output)
             self.assertIn("Authorized VA Audit Baseline", output)
-        self.assertIn("[1] FINDINGS & EVIDENCE", pretty)
+        self.assertIn("[2] THREAT BREAKDOWN", pretty)
         self.assertIn("[CAPABILITY]", pretty)
         self.assertIn("[RATIONALE]", pretty)
 

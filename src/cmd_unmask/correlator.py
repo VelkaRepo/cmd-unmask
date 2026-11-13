@@ -76,40 +76,50 @@ def correlate_triage(
     file_iocs = [i for i in iocs if i.ioc_type in ("file_path", "path")]
     classified_net = [(i, classify_network_target(i.raw_value, i.ioc_type)) for i in net_iocs]
 
-    # Build 2-3 sentence Executive Brief
-    stages: list[str] = []
-    if parent_image:
-        child_disp = _short_name(image) or _short_name(target_token) or "child process"
-        stages.append(f"Delivery/Spawn: {parent_image} spawned {child_disp}")
+    # Build concise, natural analyst prose Executive Brief (<= ~160 chars)
+    parent_disp = _short_name(parent_image) if parent_image else ""
+    child_disp = _short_name(image) or _short_name(target_token) or "process"
+
     if "BINARY_MASQUERADING" in rule_ids:
-        stages.append(f"Defense Evasion (Masquerading): {image} executed from a non-canonical path")
+        lead = f"Masquerading {image} from non-canonical path"
+    elif parent_disp:
+        adj = "obfuscated " if chain_layers > 0 else ""
+        lead = f"{parent_disp} spawned {adj}{child_disp}"
     elif chain_layers > 0:
-        stages.append(f"Evasion: {chain_layers} obfuscation/decoding layer(s) stripped")
+        lead = f"Obfuscated {child_disp}"
+    elif profile:
+        lead = f"{profile.name} execution"
+    else:
+        lead = f"Suspicious {child_disp} activity ({severity.value} {risk_score}/100)"
 
     if any(mid.startswith("T1003") for mid in mitre_ids):
-        stages.append("Credential Access: LSASS/credential memory dumping indicators detected")
+        action = "performing LSASS/credential dumping"
     elif "T1055" in mitre_ids:
-        stages.append("Defense Evasion/Injection: Win32 process-injection P/Invoke APIs detected")
-    elif profile:
-        stages.append(f"Execution: {profile.name} abused ({profile.abuse_vector})")
+        action = "using Win32 process-injection APIs"
+    else:
+        action = ""
 
+    target = ""
     if classified_net:
         ext_vals = [i.raw_value for i, cls in classified_net if cls == "public_external"]
         meta_vals = [i.raw_value for i, cls in classified_net if cls == "cloud_metadata"]
         priv_vals = [i.raw_value for i, cls in classified_net if cls == "private_rfc1918"]
         if ext_vals:
-            stages.append(f"C2/Ingress: external network target(s) {', '.join(ext_vals[:2])}")
+            target = f"targeting {ext_vals[0]}"
         elif meta_vals:
-            stages.append(f"Cloud SSRF: cloud metadata endpoint {', '.join(meta_vals[:2])}")
+            target = f"querying cloud metadata {meta_vals[0]}"
         elif priv_vals:
-            stages.append(f"Lateral/Internal: RFC1918 target(s) {', '.join(priv_vals[:2])}")
+            target = f"targeting internal {priv_vals[0]}"
 
-    if not stages:
-        stages.append(f"Suspicious execution scored {severity.value} ({risk_score}/100)")
-
-    brief = ". ".join(stages) + "."
-    if flag_notes and len(brief) < 280:
-        brief += f" Key flags: {flag_notes[0].split(':', 1)[0]}."
+    brief_parts = [part for part in (lead, action, target) if part]
+    brief = " ".join(brief_parts) + "."
+    if len(brief) > 160 and action and target:
+        brief = f"{lead} {target}."
+    if flag_notes and len(brief) <= 125:
+        flag_tag = flag_notes[0].split(":", 1)[0]
+        candidate = f"{brief} Key flag: {flag_tag}."
+        if len(candidate) <= 160:
+            brief = candidate
 
     # Build artifact-grounded L1/L2 Investigation Playbook
     steps: list[str] = []

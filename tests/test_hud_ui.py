@@ -31,28 +31,25 @@ class TestTacticalHudLayout(unittest.TestCase):
         # Top-down HUD box uses rounded UTF-8 borders when color=True
         self.assertIn("╭", out)
         self.assertIn("╰", out)
-        self.assertIn("Triage Verdict [hud-crit-1]", out)
-        self.assertIn("Process Chain :", out)
-        self.assertIn("WINWORD.EXE", out)
-        self.assertIn("Exec Brief    :", out)
+        self.assertIn("CMD-UNMASK [hud-crit-1] | CRITICAL (100/100)", out)
+        self.assertIn("Chain: WINWORD.EXE -> powershell.exe", out)
+        self.assertNotIn("...", out.split("╰")[0])
 
-        # Max 2 lines for Exec Brief inside the HUD box
-        brief_lines = [
-            ln for ln in out.splitlines()
-            if ln.startswith("│ Exec Brief") or (ln.startswith("│ ") and "                " in ln and "Process Chain" not in ln and "Triage Verdict" not in ln)
-        ]
-        self.assertLessEqual(len(brief_lines), 2)
-
-        # Clean 3-section top-down layout with simple bullets
-        self.assertIn("[1] FINDINGS & EVIDENCE", out)
+        # Clean top-down analyst reading flow:
+        # [1] UNMASKED COMMAND -> [2] THREAT BREAKDOWN -> [3] DEFANGED IOCs -> [4] NEXT STEPS
+        self.assertIn("[1] UNMASKED COMMAND (Base64 UTF-16LE Decoded)", out)
+        self.assertIn(inner, out)
+        self.assertNotIn("Step 0 [Raw Input]", out)
+        self.assertIn("[2] THREAT BREAKDOWN", out)
         self.assertIn("  \x1b[36m•\x1b[0m ", out)
-        self.assertIn("[2] IOCs & NEXT STEPS", out)
-        self.assertIn("[3] UNMASKED PAYLOAD", out)
+        self.assertIn("[3] DEFANGED IOCs", out)
+        self.assertIn("[4] NEXT STEPS", out)
         self.assertNotIn("├─►", out)
 
-        # Ordering: Findings -> IOCs & Next Steps -> Unmasked Payload
-        self.assertLess(out.index("[1] FINDINGS & EVIDENCE"), out.index("[2] IOCs & NEXT STEPS"))
-        self.assertLess(out.index("[2] IOCs & NEXT STEPS"), out.index("[3] UNMASKED PAYLOAD"))
+        # Ordering: Unmasked Command -> Threat Breakdown -> Defanged IOCs -> Next Steps
+        self.assertLess(out.index("[1] UNMASKED COMMAND"), out.index("[2] THREAT BREAKDOWN"))
+        self.assertLess(out.index("[2] THREAT BREAKDOWN"), out.index("[3] DEFANGED IOCs"))
+        self.assertLess(out.index("[3] DEFANGED IOCs"), out.index("[4] NEXT STEPS"))
 
         self.assertNotIn("[BEHAVIORAL CAPABILITIES]", out)
         self.assertNotIn("[VERDICT RATIONALE]", out)
@@ -63,10 +60,10 @@ class TestTacticalHudLayout(unittest.TestCase):
         verdict = unmask_command("ipconfig /all", source_id="hud-ben-1")
         out = render_pretty([verdict], color=False)
 
-        self.assertIn("[1] FINDINGS & EVIDENCE: None", out)
-        self.assertNotIn("EXTRACTED IOCs", out)
-        self.assertIn("[2] IOCs & NEXT STEPS", out)
-        self.assertIn("[3] PAYLOAD", out)
+        self.assertIn("[1] UNMASKED COMMAND (Unobfuscated)", out)
+        self.assertIn("[2] THREAT BREAKDOWN: None", out)
+        self.assertNotIn("DEFANGED IOCs", out)
+        self.assertIn("[3] NEXT STEPS", out)
         self.assertNotIn("Step 0 [Raw Input]", out)
         self.assertNotIn("READY-TO-PASTE SOC TICKET NOTE", out)
 
@@ -74,10 +71,10 @@ class TestTacticalHudLayout(unittest.TestCase):
         cmd = "p^o^w^e^r^s^h^e^l^l -NoP -Command \"Write-Host 'hello'\""
         verdict = unmask_command(cmd, source_id="hud-norm-1")
         out_default = render_pretty([verdict], color=False, full=False)
-        self.assertIn("[3] PAYLOAD (normalized)", out_default)
-        sec3 = out_default.split("[3] PAYLOAD (normalized)")[1]
-        self.assertNotIn("Step 0 [Raw Input]", sec3)
-        self.assertNotIn("Step 1 [Shell Normalizer]", sec3)
+        self.assertIn("[1] UNMASKED COMMAND (Shell Normalizer)", out_default)
+        sec1 = out_default.split("[2] THREAT BREAKDOWN")[0]
+        self.assertNotIn("Step 0 [Raw Input]", sec1)
+        self.assertNotIn("Step 1 [Shell Normalizer]", sec1)
 
         out_full = render_pretty([verdict], color=False, full=True)
         self.assertIn("Step 0 [Raw Input]", out_full)

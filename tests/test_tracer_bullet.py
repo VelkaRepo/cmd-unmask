@@ -34,7 +34,7 @@ class TestTracerBulletPipeline(unittest.TestCase):
             exit_code = main(["-c", "whoami /all"])
         output = buf.getvalue()
         self.assertEqual(exit_code, 0)
-        self.assertIn("Triage Verdict", output)
+        self.assertIn("CMD-UNMASK [cli]", output)
         self.assertIn("BENIGN", output)
         self.assertIn("whoami /all", output)
 

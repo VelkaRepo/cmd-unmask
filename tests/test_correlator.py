@@ -98,8 +98,8 @@ class TestBriefAndPlaybookRenderer(unittest.TestCase):
         md = render_markdown([verdict])
         note = build_soc_ticket_note(verdict)
 
-        self.assertIn("Exec Brief    :", pretty)
-        self.assertIn("[2] IOCs & NEXT STEPS", pretty)
+        self.assertIn("CMD-UNMASK [ren-mal-1]", pretty)
+        self.assertIn("[4] NEXT STEPS", pretty)
         self.assertIn("WINWORD.EXE", pretty)
         self.assertIn("c2[.]evil[.]example", pretty)
 
@@ -114,8 +114,8 @@ class TestBriefAndPlaybookRenderer(unittest.TestCase):
     def test_benign_renders_clean_brief_and_playbook(self) -> None:
         verdict = unmask_command("ipconfig /all", source_id="ren-ben-1")
         pretty = render_pretty([verdict], color=False)
-        self.assertIn("Exec Brief    :", pretty)
-        self.assertIn("[2] IOCs & NEXT STEPS", pretty)
+        self.assertIn("CMD-UNMASK [ren-ben-1]", pretty)
+        self.assertIn("[3] NEXT STEPS", pretty)
         self.assertIn("Benign administrative", pretty)
 
 

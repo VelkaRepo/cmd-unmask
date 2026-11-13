@@ -86,6 +86,11 @@ def _humanize_evidence(evidence: str, node_labels: dict[str, str]) -> str:
     return evidence
 
 
+def _short_proc_name(path: str) -> str:
+    """Return executable basename from a Windows or POSIX path."""
+    return path.replace("\\", "/").rstrip("/").rsplit("/", 1)[-1] or path
+
+
 def _format_process_chain(verdict: TriageVerdict) -> str | None:
     """Format parent -> child process chain when parent_image is present."""
     if not verdict.parent_image:
@@ -211,33 +216,25 @@ def render_pretty(
     for verdict in verdicts:
         timeline, node_labels = build_unmasking_timeline(verdict)
         sc = _sev_color(verdict.severity)
+        chain_part = ""
+        if verdict.parent_image:
+            p_short = _short_proc_name(verdict.parent_image)
+            c_short = _short_proc_name(verdict.image) if verdict.image else "<command>"
+            chain_part = f" | Chain: {p_short} -> {c_short}"
         header_title = (
-            f"Triage Verdict [{verdict.source_id}] | "
-            f"Severity: {verdict.severity.value} ({verdict.risk_score}/100)"
+            f"CMD-UNMASK [{verdict.source_id}] | "
+            f"{verdict.severity.value} ({verdict.risk_score}/100){chain_part}"
         )
         base_width = max(76, len(header_title) + 2)
         wrap_limit = base_width - 2
 
-        process_chain = _format_process_chain(verdict)
-        proc_lines = (
-            _wrap_hud(f"Process Chain : {process_chain}", wrap_limit)
-            if process_chain
-            else []
-        )
         brief_lines = (
-            _wrap_hud(f"Exec Brief    : {verdict.executive_brief}", wrap_limit)
+            _wrap_hud(verdict.executive_brief, wrap_limit, indent=0)
             if verdict.executive_brief
             else []
         )
-        if len(brief_lines) > 2:
-            second = brief_lines[1].rstrip()
-            if len(second) + 3 > wrap_limit:
-                second = second[: wrap_limit - 3].rsplit(" ", 1)[0].rstrip(".,;:") + "..."
-            else:
-                second = second.rstrip(".,;:") + "..."
-            brief_lines = [brief_lines[0], second]
 
-        all_hud_contents = [header_title, *proc_lines, *brief_lines]
+        all_hud_contents = [header_title, *brief_lines]
         box_width = max(base_width, *(len(c) + 2 for c in all_hud_contents))
         inner_wrap = box_width - 2
 
@@ -248,15 +245,32 @@ def render_pretty(
             f"{c_cyan}{tl}{h * box_width}{tr}{c_reset}",
             _box_row(header_title, sc),
         ]
-        for p_line in proc_lines:
-            lines.append(_box_row(p_line, c_bold if p_line.startswith("Process Chain") else ""))
         if brief_lines:
             lines.append(f"{c_cyan}{ml}{h * box_width}{mr}{c_reset}")
             for b_line in brief_lines:
                 lines.append(_box_row(b_line))
         lines.append(f"{c_cyan}{bl}{h * box_width}{br}{c_reset}")
 
-        # [1] FINDINGS & EVIDENCE
+        # [1] UNMASKED COMMAND
+        applied_steps = [lbl for idx, lbl, _ in timeline if idx > 0]
+        chain_label = " -> ".join(applied_steps) if applied_steps else "Unobfuscated"
+        lines.append("")
+        lines.append(f"{c_bold}{c_cyan}[1] UNMASKED COMMAND ({chain_label}){c_reset}")
+        if full and len(timeline) > 1:
+            for idx, (step_num, label, text_val) in enumerate(timeline):
+                is_last = idx == len(timeline) - 1
+                tag = " [FINAL UNMASKED PAYLOAD]" if is_last else ""
+                lines.append(
+                    f"  {c_cyan}{bullet}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
+                )
+                for tline in text_val.splitlines() or [""]:
+                    lines.append(f"    {tline}")
+        else:
+            display_text = _truncate_lines(timeline[-1][2], head=6, tail=4, full=full)
+            for tline in display_text.splitlines() or [""]:
+                lines.append(f"  {tline}")
+
+        # [2] THREAT BREAKDOWN
         lines.append("")
         if (
             verdict.severity == Severity.BENIGN
@@ -265,72 +279,52 @@ def render_pretty(
         ):
             rationale_suffix = verdict.verdict_rationale or "No malicious behavioral indicators matched"
             lines.append(
-                f"{c_bold}{c_cyan}[1] FINDINGS & EVIDENCE:{c_reset} {c_dim}None {em_dash} {rationale_suffix}{c_reset}"
+                f"{c_bold}{c_cyan}[2] THREAT BREAKDOWN:{c_reset} {c_dim}None {em_dash} {rationale_suffix}{c_reset}"
             )
         else:
-            lines.append(f"{c_bold}{c_cyan}[1] FINDINGS & EVIDENCE{c_reset}")
-            evidence_items: list[str] = []
+            lines.append(f"{c_bold}{c_cyan}[2] THREAT BREAKDOWN{c_reset}")
+            matched_ev_blobs = [
+                f"{m.evidence} {m.name}".lower() for m in verdict.behavioral_matches
+            ]
+            breakdown_items: list[str] = []
             for match in verdict.behavioral_matches:
                 clean_ev = _humanize_evidence(match.evidence, node_labels)
-                origin_label = node_labels.get(match.source_node_id, "Unpacked Layer")
-                evidence_items.append(
-                    f"{c_bold}{match.mitre_id}{c_reset} ({match.tactic}) - {match.name}: {clean_ev} {c_dim}({origin_label}){c_reset}"
+                breakdown_items.append(
+                    f"{c_bold}{match.mitre_id:<9}{c_reset} {c_dim}{match.tactic:<20}{c_reset} {match.name} {c_dim}({clean_ev}){c_reset}"
                 )
             for cap in verdict.capabilities:
-                evidence_items.append(f"[{c_yellow}CAPABILITY{c_reset}] {cap}")
-            if verdict.verdict_rationale:
-                evidence_items.append(f"[{c_dim}RATIONALE{c_reset}] {verdict.verdict_rationale}")
+                cap_artifact = cap.split(": ", 1)[1] if ": " in cap else cap
+                if any(cap_artifact.lower() in blob for blob in matched_ev_blobs):
+                    continue
+                breakdown_items.append(f"[{c_yellow}CAPABILITY{c_reset}] {cap}")
+            if (not verdict.behavioral_matches or verdict.severity == Severity.BENIGN) and verdict.verdict_rationale:
+                breakdown_items.append(f"[{c_dim}RATIONALE{c_reset}] {verdict.verdict_rationale}")
 
-            if evidence_items:
-                for item in evidence_items:
+            if breakdown_items:
+                for item in breakdown_items:
                     lines.append(f"  {c_cyan}{bullet}{c_reset} {item}")
             else:
                 lines.append(f"  {c_dim}{bullet} None (No malicious behavioral indicators matched){c_reset}")
 
-        # [2] IOCs & NEXT STEPS
-        if verdict.iocs or verdict.playbook_steps:
-            ioc_mode = "DEFANGED" if defang else "RAW"
+        # [3] DEFANGED IOCs (only if present) & [4] NEXT STEPS
+        sec_num = 3
+        if verdict.iocs:
+            ioc_title = "DEFANGED IOCs" if defang else "RAW IOCs"
             lines.append("")
-            lines.append(f"{c_bold}{c_cyan}[2] IOCs & NEXT STEPS{c_reset}")
-            if verdict.iocs:
-                for ioc in verdict.iocs:
-                    val = ioc.defanged_value if defang else ioc.raw_value
-                    origin_label = node_labels.get(ioc.source_node_id, "Unpacked Layer")
-                    lines.append(
-                        f"  {c_cyan}{bullet}{c_reset} [{c_yellow}{ioc.ioc_type}{c_reset}] {c_bold}{val}{c_reset} {c_dim}({ioc_mode}, from {origin_label}){c_reset}"
-                    )
+            lines.append(f"{c_bold}{c_cyan}[{sec_num}] {ioc_title}{c_reset}")
+            sec_num += 1
+            for ioc in verdict.iocs:
+                val = ioc.defanged_value if defang else ioc.raw_value
+                lines.append(
+                    f"  {c_cyan}{bullet}{c_reset} {c_yellow}{ioc.ioc_type.upper():<6}{c_reset} {c_bold}{val}{c_reset}"
+                )
+
+        if verdict.playbook_steps:
+            lines.append("")
+            lines.append(f"{c_bold}{c_cyan}[{sec_num}] NEXT STEPS{c_reset}")
+            sec_num += 1
             for i, step in enumerate(verdict.playbook_steps):
                 lines.append(f"  {c_cyan}{i + 1}.{c_reset} {step}")
-
-        # [3] PAYLOAD / UNMASKED PAYLOAD
-        lines.append("")
-        is_single_raw = len(timeline) == 1
-        is_trivial_norm = (
-            not full
-            and len(timeline) == 2
-            and timeline[1][1] == "Shell Normalizer"
-        )
-        if is_single_raw:
-            lines.append(f"{c_bold}{c_cyan}[3] PAYLOAD{c_reset}")
-            display_text = _truncate_lines(timeline[0][2], head=6, tail=4, full=full)
-            for tline in display_text.splitlines() or [""]:
-                lines.append(f"  {tline}")
-        elif is_trivial_norm:
-            lines.append(f"{c_bold}{c_cyan}[3] PAYLOAD (normalized){c_reset}")
-            display_text = _truncate_lines(timeline[-1][2], head=6, tail=4, full=full)
-            for tline in display_text.splitlines() or [""]:
-                lines.append(f"  {tline}")
-        else:
-            lines.append(f"{c_bold}{c_cyan}[3] UNMASKED PAYLOAD{c_reset}")
-            for idx, (step_num, label, text_val) in enumerate(timeline):
-                is_last = idx == len(timeline) - 1
-                tag = " [FINAL UNMASKED PAYLOAD]" if (is_last and len(timeline) > 1) else ""
-                lines.append(
-                    f"  {c_cyan}{bullet}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
-                )
-                display_text = _truncate_lines(text_val, head=6, tail=4, full=full)
-                for tline in display_text.splitlines() or [""]:
-                    lines.append(f"    {tline}")
 
         if verdict.warnings:
             lines.append("")
