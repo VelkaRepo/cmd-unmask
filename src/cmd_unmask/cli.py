@@ -247,6 +247,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Optional target process image path for single or clipboard triage.",
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="Print complete multi-line unmasked payloads without head/tail truncation.",
+    )
     return parser
 
 
@@ -422,10 +427,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     elif args.format == "markdown":
         sys.stdout.write(render_markdown(verdicts, defang=defang))
     else:
-        sys.stdout.write(render_pretty(verdicts, defang=defang, color=use_color))
+        sys.stdout.write(render_pretty(verdicts, defang=defang, color=use_color, full=args.full))
 
     if args.copy_note and verdicts:
-        combined_notes = "\n\n".join(build_soc_ticket_note(v, defang=defang) for v in verdicts)
+        combined_notes = "\n\n".join(
+            build_soc_ticket_note(v, defang=defang, full=args.full) for v in verdicts
+        )
         set_clipboard_text(combined_notes)
 
     if args.fail_on:

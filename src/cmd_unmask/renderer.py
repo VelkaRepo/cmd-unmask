@@ -34,20 +34,27 @@ def format_technique_label(technique: str, parameters: dict | None = None) -> st
 
 
 def build_unmasking_timeline(verdict: TriageVerdict) -> tuple[list[tuple[int, str, str]], dict[str, str]]:
-    """Build an ordered list of (step_index, step_label, payload_text) and a node_id -> step_label map."""
+    """Build an ordered, deduplicated list of (step_index, step_label, payload_text) and node_id -> step_label map."""
     timeline: list[tuple[int, str, str]] = [
         (0, "Raw Input", verdict.original_command),
     ]
     node_labels: dict[str, str] = {verdict.dag.root_id: "Step 0 [Raw Input]"}
 
     step_idx = 1
+    prev_normalized = verdict.original_command.strip()
     for edge in verdict.provenance_chain:
         child = verdict.dag.nodes.get(edge.child_id)
         if child is None:
             continue
+        child_normalized = child.text.strip()
+        if child_normalized == prev_normalized:
+            prev_step_num, prev_label, _ = timeline[-1]
+            node_labels[edge.child_id] = f"Step {prev_step_num} [{prev_label}]"
+            continue
         label = format_technique_label(edge.technique, edge.parameters)
         timeline.append((step_idx, label, child.text))
         node_labels[edge.child_id] = f"Step {step_idx} [{label}]"
+        prev_normalized = child_normalized
         step_idx += 1
 
     for nid, node in verdict.dag.nodes.items():
@@ -56,6 +63,18 @@ def build_unmasking_timeline(verdict: TriageVerdict) -> tuple[list[tuple[int, st
             node_labels[nid] = f"Step {node.depth} [{lbl}]"
 
     return timeline, node_labels
+
+
+def _truncate_lines(text: str, head: int = 8, tail: int = 4, full: bool = False) -> str:
+    """Truncate long multi-line payloads using head/tail windows unless full=True."""
+    if full or not text:
+        return text
+    lines = text.splitlines()
+    if len(lines) <= head + tail:
+        return text
+    omitted = len(lines) - (head + tail)
+    marker = f"... [{omitted} lines omitted; pass --full to view complete payload] ..."
+    return "\n".join(lines[:head] + [marker] + lines[-tail:])
 
 
 def _humanize_evidence(evidence: str, node_labels: dict[str, str]) -> str:
@@ -74,7 +93,7 @@ def _format_process_chain(verdict: TriageVerdict) -> str | None:
     return f"{verdict.parent_image} -> {child}"
 
 
-def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True) -> str:
+def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True, full: bool = False) -> str:
     """Generate a compact, ready-to-paste SOC ticket note block for QRadar/MSA offense notes."""
     timeline, _ = build_unmasking_timeline(verdict)
     applied_steps = [lbl for idx, lbl, _ in timeline if idx > 0]
@@ -86,11 +105,15 @@ def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True) -> str:
     else:
         raw_display = raw_cmd
 
+    unmasked_display = _truncate_lines(verdict.primary_unmasked_payload, full=full)
+
     lines: list[str] = [
         f"[SOC TRIAGE NOTE - {verdict.source_id}]",
         f"Verdict       : {verdict.severity.value} (Risk Score: {verdict.risk_score}/100)",
         f"Obfuscation   : {unmask_summary}",
     ]
+    if verdict.verdict_rationale:
+        lines.append(f"Rationale     : {verdict.verdict_rationale}")
     process_chain = _format_process_chain(verdict)
     if process_chain:
         lines.append(f"Process Chain : {process_chain}")
@@ -98,9 +121,15 @@ def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True) -> str:
         [
             f"Raw Command   : {raw_display}",
             "Unmasked Cmd  :",
-            f"  {verdict.primary_unmasked_payload}",
         ]
     )
+    for uline in unmasked_display.splitlines() or [""]:
+        lines.append(f"  {uline}")
+
+    if verdict.capabilities:
+        lines.append("Capabilities  :")
+        for cap in verdict.capabilities:
+            lines.append(f"  - {cap}")
 
     if verdict.iocs:
         lines.append("Extracted IOCs:")
@@ -123,7 +152,12 @@ def build_soc_ticket_note(verdict: TriageVerdict, defang: bool = True) -> str:
     return "\n".join(lines)
 
 
-def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: bool = True) -> str:
+def render_pretty(
+    verdicts: list[TriageVerdict],
+    defang: bool = True,
+    color: bool = True,
+    full: bool = False,
+) -> str:
     """Render verdicts using a rich ANSI terminal UI with box-drawing characters and 4 clear sections."""
     c_reset = "\x1b[0m" if color else ""
     c_bold = "\x1b[1m" if color else ""
@@ -182,7 +216,9 @@ def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: boo
                 f"  {c_cyan}{connector}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
             )
             pipe_prefix = "      " if is_last else f"  {c_cyan}│{c_reset}   "
-            lines.append(f"{pipe_prefix}{text_val}")
+            display_text = _truncate_lines(text_val, full=full)
+            for tline in display_text.splitlines() or [""]:
+                lines.append(f"{pipe_prefix}{tline}")
 
         ioc_header_mode = "DEFANGED" if defang else "RAW"
         lines.append("")
@@ -211,6 +247,18 @@ def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: boo
         else:
             lines.append(f"  {c_dim}└─► None (No malicious behavioral indicators matched){c_reset}")
 
+        if verdict.capabilities:
+            lines.append("")
+            lines.append(f"{c_bold}{c_cyan}[BEHAVIORAL CAPABILITIES]{c_reset}")
+            for i, cap in enumerate(verdict.capabilities):
+                conn = "└─►" if i == len(verdict.capabilities) - 1 else "├─►"
+                lines.append(f"  {c_cyan}{conn}{c_reset} {cap}")
+
+        if verdict.verdict_rationale:
+            lines.append("")
+            lines.append(f"{c_bold}{c_cyan}[VERDICT RATIONALE]{c_reset}")
+            lines.append(f"  {c_cyan}└─►{c_reset} {verdict.verdict_rationale}")
+
         if verdict.warnings:
             lines.append("")
             lines.append(f"{c_bold}{c_yellow}[!] DIAGNOSTIC WARNINGS{c_reset}")
@@ -222,7 +270,7 @@ def render_pretty(verdicts: list[TriageVerdict], defang: bool = True, color: boo
         lines.append(f"{c_bold}{c_cyan}[4] READY-TO-PASTE SOC TICKET NOTE{c_reset}")
         divider = "─" * 68
         lines.append(f"{c_dim}{divider}{c_reset}")
-        for note_line in build_soc_ticket_note(verdict, defang=defang).splitlines():
+        for note_line in build_soc_ticket_note(verdict, defang=defang, full=full).splitlines():
             lines.append(note_line)
         lines.append(f"{c_dim}{divider}{c_reset}")
 
@@ -272,6 +320,14 @@ def render_markdown(verdicts: list[TriageVerdict], defang: bool = True) -> str:
                 )
         else:
             lines.append("- **MITRE ATT&CK Behavioral Matches**: None")
+
+        if verdict.capabilities:
+            lines.append("- **Behavioral Capabilities**:")
+            for cap in verdict.capabilities:
+                lines.append(f"  - `{cap}`")
+
+        if verdict.verdict_rationale:
+            lines.append(f"- **Verdict Rationale**: {verdict.verdict_rationale}")
 
         if verdict.warnings:
             lines.append("- **Diagnostic Warnings**:")
