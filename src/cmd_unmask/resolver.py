@@ -8,30 +8,40 @@ from collections import Counter
 from dataclasses import dataclass, field
 
 MAX_RESOLVER_PASSES: int = 20
+MAX_CHAR_ARRAY_LEN: int = 16_384
 
 _QUOTED_STR_PAT = r"(?:'(?:''|[^'])*'|\"(?:`\"|\"\"|[^\"])*\")"
+_VALID_FMT_TOKEN_RE = re.compile(r"\{\d+(?::[xXdDfFsS0-9.]*)?\}")
 
 # [char]105 or [char]0x69 or [char](105)
 _CHAR_CAST_RE = re.compile(
-    r"\[\s*char\s*\]\s*\(?\s*(0x[0-9a-fA-F]+|\d+)\s*\)?",
+    r"\[\s*char\s*\]\s*(?:\(\s*(0x[0-9a-fA-F]+|\d+)\s*\)|(0x[0-9a-fA-F]+|\d+))",
     re.IGNORECASE,
 )
 
-# [char[]](105, 101, 120) -join ''
+# [char[]](105, 101, 120) -join '' or [char[]]@(73,69,88) -join '' or ([char[]]@(73,69,88)) -join ''
 _CHAR_ARRAY_JOIN_RE = re.compile(
-    rf"\(?\s*\[\s*char\s*\[\s*\]\s*\]\s*\(\s*([0-9a-fA-FxX,\s]+)\)\s*\)?\s*-join\s*({_QUOTED_STR_PAT})?",
+    rf"(?:\(\s*\[\s*char\s*\[\s*\]\s*\]\s*@?\(\s*([0-9a-fA-FxX,\s]+)\s*\)\s*\)|\[\s*char\s*\[\s*\]\s*\]\s*@?\(\s*([0-9a-fA-FxX,\s]+)\s*\))\s*-join\s*({_QUOTED_STR_PAT})?",
     re.IGNORECASE,
 )
 
-# [string]::Join('sep', ('a', 'b', 'c'))
+_PIPE_CHAR_BODY = r"(?:\[\s*(?:int|byte)\s*\[\s*\]\s*\]\s*)?@?\(\s*([0-9a-fA-FxX,\s]+)\s*\)\s*\|\s*(?:%|ForEach-Object|foreach)\s*\{\s*\[\s*char\s*\]\s*\$_\s*\}"
+
+# ([int[]]@(73,69,88) | % {[char]$_}) -join '' or (73,69,88) | ForEach-Object {[char]$_} -join ''
+_PIPE_CHAR_ARRAY_JOIN_RE = re.compile(
+    rf"(?:\(\s*{_PIPE_CHAR_BODY}\s*\)|{_PIPE_CHAR_BODY})\s*-join\s*({_QUOTED_STR_PAT})?",
+    re.IGNORECASE,
+)
+
+# [string]::Join('sep', ('a', 'b', 'c')) or [string]::Join('sep', @('a', 'b'))
 _STRING_JOIN_STATIC_RE = re.compile(
-    rf"\[\s*(?:system\.)?string\s*\]::join\s*\(\s*({_QUOTED_STR_PAT})\s*,\s*\(?\s*({_QUOTED_STR_PAT}(?:\s*,\s*{_QUOTED_STR_PAT})*)\s*\)?\s*\)",
+    rf"\[\s*(?:system\.)?string\s*\]::join\s*\(\s*({_QUOTED_STR_PAT})\s*,\s*@?\(?\s*({_QUOTED_STR_PAT}(?:\s*,\s*{_QUOTED_STR_PAT})*)\s*\)?\s*\)",
     re.IGNORECASE,
 )
 
-# ('a', 'b', 'c') -join 'sep'
+# ('a', 'b', 'c') -join 'sep' or @('a', 'b', 'c') -join 'sep'
 _ARRAY_OP_JOIN_RE = re.compile(
-    rf"\(\s*({_QUOTED_STR_PAT}(?:\s*,\s*{_QUOTED_STR_PAT})+)\s*\)\s*-join\s*({_QUOTED_STR_PAT})?",
+    rf"@?\(\s*({_QUOTED_STR_PAT}(?:\s*,\s*{_QUOTED_STR_PAT})+)\s*\)\s*-join\s*({_QUOTED_STR_PAT})?",
     re.IGNORECASE,
 )
 
@@ -209,7 +219,8 @@ def _fold_pass(text: str) -> tuple[str, set[str]]:
 
     # 2. [char] casts: [char]105 -> 'i'
     def _repl_char_cast(m: re.Match[str]) -> str:
-        code = _parse_int(m.group(1))
+        raw_num = m.group(1) or m.group(2)
+        code = _parse_int(raw_num)
         if code is not None and 0 <= code <= 0x10FFFF:
             reducers.add("char_cast")
             return _quote_single(chr(code))
@@ -217,20 +228,29 @@ def _fold_pass(text: str) -> tuple[str, set[str]]:
 
     curr = _CHAR_CAST_RE.sub(_repl_char_cast, curr)
 
-    # 3. [char[]](105, 101, 120) -join ''
-    def _repl_char_array_join(m: re.Match[str]) -> str:
-        nums_raw = [tok for tok in re.split(r"[,\s]+", m.group(1).strip()) if tok]
+    # 3. [char[]](105, 101, 120) -join '' and ([int[]]@(73,69,88) | % {[char]$_}) -join ''
+    def _decode_char_array(nums_blob: str, sep_raw: str | None, reducer_name: str, fallback: str) -> str:
+        nums_raw = [tok for tok in re.split(r"[,\s]+", nums_blob.strip()) if tok]
+        if not nums_raw or len(nums_raw) > MAX_CHAR_ARRAY_LEN:
+            return fallback
         chars: list[str] = []
         for tok in nums_raw:
             val = _parse_int(tok)
             if val is None or not (0 <= val <= 0x10FFFF):
-                return m.group(0)
+                return fallback
             chars.append(chr(val))
-        sep = _unquote(m.group(2)) if m.group(2) else ""
-        reducers.add("char_array_join")
+        sep = _unquote(sep_raw) if sep_raw else ""
+        reducers.add(reducer_name)
         return _quote_single(sep.join(chars))
 
-    curr = _CHAR_ARRAY_JOIN_RE.sub(_repl_char_array_join, curr)
+    curr = _CHAR_ARRAY_JOIN_RE.sub(
+        lambda m: _decode_char_array(m.group(1) or m.group(2), m.group(3), "char_array_join", m.group(0)),
+        curr,
+    )
+    curr = _PIPE_CHAR_ARRAY_JOIN_RE.sub(
+        lambda m: _decode_char_array(m.group(1) or m.group(2), m.group(3), "char_array_join", m.group(0)),
+        curr,
+    )
 
     # 4. [string]::Join('sep', ('a', 'b', 'c'))
     def _repl_string_join_static(m: re.Match[str]) -> str:
@@ -257,7 +277,14 @@ def _fold_pass(text: str) -> tuple[str, set[str]]:
     # 6. PowerShell format operator: "{1}{0}" -f 'a', 'b'
     def _repl_format_op(m: re.Match[str]) -> str:
         fmt_str = _unquote(m.group(1))
+        if len(fmt_str) > 32_768 or not _VALID_FMT_TOKEN_RE.search(fmt_str):
+            return m.group(0)
+        scrubbed = _VALID_FMT_TOKEN_RE.sub("", fmt_str.replace("{{", "").replace("}}", ""))
+        if "{" in scrubbed or "}" in scrubbed:
+            return m.group(0)
         args = [_unquote(q.group(0)) for q in re.finditer(_QUOTED_STR_PAT, m.group(2))]
+        if len(args) > 256:
+            return m.group(0)
         try:
             formatted = fmt_str.format(*args)
             reducers.add("format_operator")
