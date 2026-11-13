@@ -132,6 +132,14 @@ _Avoid_: Generic checklist, AI advice, remediation script
 The top-down terminal presentation layout in `render_pretty()` that surfaces Verdict, Risk Score, Process Chain, and Executive Brief inside a framed summary header, followed by sequentially numbered `[1]`..`[N]` evidence sections, smart empty-section collapsing, strict `--no-color` ASCII fallback, and a compact clipboard-copy banner.
 _Avoid_: Pretty printer, ASCII art, dashboard dump
 
+**Symbol-Table Variable Reconstruction**:
+The bounded, single-pass or fixed-point static resolution of multi-line PowerShell `$var = ...` assignments, `$($var)` sub-expressions, double-quoted string interpolation, and `&($cmd)` call-operator invocations into concrete command strings without executing a shell.
+_Avoid_: Variable emulator, runtime interpreter, dynamic eval
+
+**Character-Code Deobfuscation**:
+The deterministic static folding of numeric character casts and array-join expressions—such as `[char]73 + [char]69 + [char]88` and `[char[]]@(73,69,88) -join ''`—into literal text within strict Unicode codepoint and length bounds.
+_Avoid_: ASCII cracker, char brute-forcer, eval decoder
+
 
 
 
