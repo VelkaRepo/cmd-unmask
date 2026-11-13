@@ -88,4 +88,12 @@ _Avoid_: Temp folder, weird path, bad directory
 The deterministic mapping of suspicious parent-child process relationships (e.g., Office macros or web servers spawning shell interpreters) to MITRE ATT&CK techniques and risk weights.
 _Avoid_: Parent blacklist, process ruleset, spawn list
 
+**UTF-16LE Null-Byte Padding**:
+Interleaved `\x00` bytes produced when Windows PowerShell `-EncodedCommand` UTF-16LE Base64 strings are decoded as raw ASCII/UTF-8 or pasted standalone without the `-enc` flag.
+_Avoid_: Null garbage, wide-char noise, zero bytes
+
+**Authorized Audit Baseline**:
+Known read-only enterprise vulnerability assessment (VA) and configuration-audit signatures (such as Nessus `NetGetJoinInformation` checks) explicitly distinguished from offensive Win32 injection APIs to prevent False Positives.
+_Avoid_: Scanner whitelist, safe list, bypass rule
+
 
