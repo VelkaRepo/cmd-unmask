@@ -138,6 +138,15 @@ _Avoid_: Variable emulator, runtime interpreter, dynamic eval
 
 **Character-Code Deobfuscation**:
 The deterministic static folding of numeric character casts and array-join expressions—such as `[char]73 + [char]69 + [char]88` and `[char[]]@(73,69,88) -join ''`—into literal text within strict Unicode codepoint and length bounds.
+_Avoid_: Ascii decoder, char hack, eval loop
+
+**IFS Separator Obfuscation**:
+The Linux/Unix shell evasion technique of replacing literal whitespace between command tokens with `$IFS` or `${IFS}` (Internal Field Separator) to bypass signature rules matching space-delimited flags or URLs.
+_Avoid_: Space variable trick, bash whitespace hack, env space
+
+**VBScript Character-Code Concatenation**:
+The static assembly of hidden VBScript/HTA commands or URLs via chains of `Chr(N)` and `ChrW(N)` function calls joined by `&` or `+` operators and optionally passed into `Execute`, `ExecuteGlobal`, or `Eval`.
+_Avoid_: VBS decoder, chr eval, script decompiler
 _Avoid_: ASCII cracker, char brute-forcer, eval decoder
 
 
