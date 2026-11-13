@@ -148,6 +148,20 @@ _BASH_ECHO_TR_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Bash echo <hex> | xxd -r -p
+_BASH_ECHO_XXD_RE = re.compile(
+    rf"echo\s+(?:-n\s+|-e\s+)*({_QUOTED_STR_PAT}|[0-9a-fA-F\s]{{8,}})\s*\|\s*xxd\s+(?:-r\s+-p|-p\s+-r|-rp|-pr|-r)\b",
+    re.IGNORECASE,
+)
+
+# Bash printf '\xNN...' (requires >= 4 hex/octal escapes to avoid benign printf format strings)
+_BASH_PRINTF_ESC_RE = re.compile(
+    rf"\bprintf\s+(?:--\s+)?({_QUOTED_STR_PAT})",
+    re.IGNORECASE,
+)
+_HEX_OR_OCT_ESC_RE = re.compile(r"\\(?:x[0-9a-fA-F]{2}|[0-7]{3})")
+_BASH_IFS_INLINE_RE = re.compile(r"(?:(?<=\S)\$\{?IFS\}?|\$\{?IFS\}?(?=\S))")
+
 
 @dataclass
 class ExpressionResolutionResult:
@@ -500,6 +514,55 @@ def _resolve_ps_symbol_table(text: str) -> tuple[str, set[str]]:
     return "".join(rebuilt), reducers
 
 
+def _is_printable_text(text: str, min_ratio: float = 0.85) -> bool:
+    """Return True if decoded payload is predominantly printable ASCII/whitespace."""
+    if not text:
+        return False
+    printable = sum(1 for ch in text if 32 <= ord(ch) <= 126 or ch in "\r\n\t")
+    return (printable / len(text)) >= min_ratio
+
+
+def _replace_bash_ifs_outside_quotes(text: str) -> tuple[str, bool]:
+    """Replace inline $IFS / ${IFS} token delimiters outside quotes with a single space."""
+    if "IFS" not in text or "$" not in text:
+        return text, False
+
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    changed = False
+
+    while i < n:
+        ch = text[i]
+        if ch in ("'", '"'):
+            quote = ch
+            j = i + 1
+            while j < n:
+                if quote == '"' and text[j] == "\\" and j + 1 < n:
+                    j += 2
+                    continue
+                if text[j] == quote:
+                    j += 1
+                    break
+                j += 1
+            out.append(text[i:j])
+            i = j
+            continue
+
+        if ch == "$":
+            m = _BASH_IFS_INLINE_RE.match(text, i)
+            if m and (i == 0 or text[i - 1] != "="):
+                out.append(" ")
+                changed = True
+                i = m.end()
+                continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out), changed
+
+
 def _fold_pass(text: str) -> tuple[str, set[str]]:
     """Execute a single bottom-up static reduction pass."""
     reducers: set[str] = set()
@@ -709,6 +772,39 @@ def _fold_pass(text: str) -> tuple[str, set[str]]:
         return m.group(0)
 
     curr = _BASH_ECHO_TR_RE.sub(_repl_bash_tr, curr)
+
+    # 15. Bash inline $IFS / ${IFS} delimiter obfuscation
+    curr, ifs_changed = _replace_bash_ifs_outside_quotes(curr)
+    if ifs_changed:
+        reducers.add("bash_ifs_delimiter")
+
+    # 16. Bash echo <hex> | xxd -r -p and printf '\xNN...' hex/octal pipelines
+    def _repl_bash_xxd(m: re.Match[str]) -> str:
+        hex_raw = re.sub(r"\s+", "", _unquote(m.group(1)))
+        if not hex_raw or len(hex_raw) > 524_288 or len(hex_raw) % 2 != 0:
+            return m.group(0)
+        try:
+            decoded = bytes.fromhex(hex_raw).decode("utf-8", errors="replace")
+            if not _is_printable_text(decoded):
+                return m.group(0)
+            reducers.add("bash_echo_xxd")
+            return decoded
+        except Exception:
+            return m.group(0)
+
+    curr = _BASH_ECHO_XXD_RE.sub(_repl_bash_xxd, curr)
+
+    def _repl_bash_printf(m: re.Match[str]) -> str:
+        inner = _unquote(m.group(1))
+        if len(inner) > 524_288 or len(_HEX_OR_OCT_ESC_RE.findall(inner)) < 4:
+            return m.group(0)
+        decoded = _decode_ansi_c_escapes(inner)
+        if not _is_printable_text(decoded):
+            return m.group(0)
+        reducers.add("bash_printf_hex")
+        return decoded
+
+    curr = _BASH_PRINTF_ESC_RE.sub(_repl_bash_printf, curr)
 
     return curr, reducers
 
