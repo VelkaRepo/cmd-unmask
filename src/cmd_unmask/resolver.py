@@ -9,6 +9,32 @@ from dataclasses import dataclass, field
 
 MAX_RESOLVER_PASSES: int = 20
 MAX_CHAR_ARRAY_LEN: int = 16_384
+MAX_SYMBOL_VARS: int = 128
+MAX_SYMBOL_VALUE_BYTES: int = 32_768
+MAX_SYMBOL_TOTAL_BYTES: int = 262_144
+
+_PS_AUTOMATIC_VARS: frozenset[str] = frozenset({
+    "_",
+    "psitem",
+    "true",
+    "false",
+    "null",
+    "args",
+    "psscriptroot",
+    "pscommandpath",
+    "myinvocation",
+    "erroractionpreference",
+    "psversiontable",
+    "pwd",
+    "home",
+    "host",
+    "input",
+    "matches",
+    "lastexitcode",
+    "error",
+    "foreach",
+    "switch",
+})
 
 _QUOTED_STR_PAT = r"(?:'(?:''|[^'])*'|\"(?:`\"|\"\"|[^\"])*\")"
 _VALID_FMT_TOKEN_RE = re.compile(r"\{\d+(?::[xXdDfFsS0-9.]*)?\}")
@@ -205,6 +231,275 @@ def _decode_ansi_c_escapes(inner: str) -> str:
     return "".join(out)
 
 
+_PS_ASSIGN_STMT_RE = re.compile(
+    r"^(\s*)\$([A-Za-z_][A-Za-z0-9_]*)\s*(\+?=)\s*(.+)$",
+    re.DOTALL,
+)
+_PS_FULL_QUOTED_RE = re.compile(rf"^{_QUOTED_STR_PAT}$", re.DOTALL)
+
+
+def _split_ps_statements(text: str) -> list[tuple[str, str]]:
+    """Split PowerShell text on newlines or ';' outside quotes and brackets."""
+    stmts: list[tuple[str, str]] = []
+    start = 0
+    i = 0
+    n = len(text)
+    in_single = False
+    in_double = False
+    paren = 0
+    brace = 0
+    bracket = 0
+
+    while i < n:
+        ch = text[i]
+        if in_single:
+            if ch == "'":
+                if i + 1 < n and text[i + 1] == "'":
+                    i += 2
+                    continue
+                in_single = False
+        elif in_double:
+            if ch == "`" and i + 1 < n:
+                i += 2
+                continue
+            if ch == '"':
+                if i + 1 < n and text[i + 1] == '"':
+                    i += 2
+                    continue
+                in_double = False
+        else:
+            if ch == "'":
+                in_single = True
+            elif ch == '"':
+                in_double = True
+            elif ch == "(":
+                paren += 1
+            elif ch == ")":
+                paren = max(0, paren - 1)
+            elif ch == "{":
+                brace += 1
+            elif ch == "}":
+                brace = max(0, brace - 1)
+            elif ch == "[":
+                bracket += 1
+            elif ch == "]":
+                bracket = max(0, bracket - 1)
+            elif paren == 0 and brace == 0 and bracket == 0:
+                if ch == "\r" and i + 1 < n and text[i + 1] == "\n":
+                    stmts.append((text[start:i], "\r\n"))
+                    i += 2
+                    start = i
+                    continue
+                if ch in ("\n", ";"):
+                    stmts.append((text[start:i], ch))
+                    i += 1
+                    start = i
+                    continue
+        i += 1
+
+    if start <= n:
+        stmts.append((text[start:], ""))
+    return stmts
+
+
+def _substitute_ps_vars(
+    text: str,
+    symbols: dict[str, str],
+    quote_outside: bool = False,
+) -> tuple[str, bool, bool]:
+    """Substitute PowerShell variables while preserving single-quoted literals and automatic vars."""
+    if not symbols or "$" not in text:
+        return text, False, False
+
+    out: list[str] = []
+    i = 0
+    n = len(text)
+    changed = False
+    used_call_op = False
+
+    def _lookup(raw_name: str) -> str | None:
+        key = raw_name.lower()
+        if key in _PS_AUTOMATIC_VARS:
+            return None
+        return symbols.get(key)
+
+    _call_op_re = re.compile(r"[&.]\s*\(\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*\)|&\s+\$([A-Za-z_][A-Za-z0-9_]*)\b(?!\s*[:=])")
+    _subexpr_re = re.compile(r"\$\(\s*\$([A-Za-z_][A-Za-z0-9_]*)\s*\)")
+    _var_re = re.compile(r"\$([A-Za-z_][A-Za-z0-9_]*)\b(?!\s*:)")
+
+    while i < n:
+        ch = text[i]
+        # Single-quoted literal: never interpolate
+        if ch == "'":
+            j = i + 1
+            while j < n:
+                if text[j] == "'":
+                    if j + 1 < n and text[j + 1] == "'":
+                        j += 2
+                        continue
+                    j += 1
+                    break
+                j += 1
+            out.append(text[i:j])
+            i = j
+            continue
+
+        # Double-quoted string: interpolate $var and $($var)
+        if ch == '"':
+            out.append('"')
+            i += 1
+            while i < n:
+                dc = text[i]
+                if dc == "`" and i + 1 < n:
+                    out.append(text[i : i + 2])
+                    i += 2
+                    continue
+                if dc == '"':
+                    if i + 1 < n and text[i + 1] == '"':
+                        out.append('""')
+                        i += 2
+                        continue
+                    out.append('"')
+                    i += 1
+                    break
+                if dc == "$":
+                    m_sub = _subexpr_re.match(text, i)
+                    if m_sub:
+                        val = _lookup(m_sub.group(1))
+                        if val is not None:
+                            out.append(val)
+                            changed = True
+                            i = m_sub.end()
+                            continue
+                    m_var = _var_re.match(text, i)
+                    if m_var:
+                        val = _lookup(m_var.group(1))
+                        if val is not None:
+                            out.append(val)
+                            changed = True
+                            i = m_var.end()
+                            continue
+                out.append(dc)
+                i += 1
+            continue
+
+        # Outside quotes
+        if not quote_outside and ch in ("&", "."):
+            m_call = _call_op_re.match(text, i)
+            if m_call:
+                vname = m_call.group(1) or m_call.group(2)
+                val = _lookup(vname)
+                if val is not None:
+                    out.append(val)
+                    changed = True
+                    used_call_op = True
+                    i = m_call.end()
+                    continue
+
+        if ch == "$":
+            m_sub = _subexpr_re.match(text, i)
+            if m_sub:
+                val = _lookup(m_sub.group(1))
+                if val is not None:
+                    out.append(_quote_single(val) if quote_outside else val)
+                    changed = True
+                    i = m_sub.end()
+                    continue
+            m_var = _var_re.match(text, i)
+            if m_var:
+                val = _lookup(m_var.group(1))
+                if val is not None:
+                    out.append(_quote_single(val) if quote_outside else val)
+                    changed = True
+                    i = m_var.end()
+                    continue
+
+        out.append(ch)
+        i += 1
+
+    return "".join(out), changed, used_call_op
+
+
+def _eval_ps_rhs(rhs: str, symbols: dict[str, str]) -> str | None:
+    """Safely evaluate a PowerShell RHS expression into a bounded string literal, or None."""
+    expr = rhs.strip()
+    if not expr:
+        return None
+    expr, _, _ = _substitute_ps_vars(expr, symbols, quote_outside=True)
+    # Run up to 6 local expression-folding passes (no variable pass recursion)
+    for _ in range(6):
+        nxt = expr
+        nxt = _CHAR_CAST_RE.sub(
+            lambda m: _quote_single(chr(c))
+            if (c := _parse_int(m.group(1) or m.group(2))) is not None and 0 <= c <= 0x10FFFF
+            else m.group(0),
+            nxt,
+        )
+        nxt = _STR_CONCAT_RE.sub(
+            lambda m: _quote_single(_unquote(m.group(1)) + _unquote(m.group(2))),
+            nxt,
+        )
+        nxt = _PAREN_QUOTED_RE.sub(r"\1", nxt)
+        if nxt == expr:
+            break
+        expr = nxt
+
+    if _PS_FULL_QUOTED_RE.match(expr):
+        return _unquote(expr)
+    return None
+
+
+def _resolve_ps_symbol_table(text: str) -> tuple[str, set[str]]:
+    """Resolve multi-line PowerShell $var = ... / += assignments with strict resource bounds."""
+    if "$" not in text:
+        return text, set()
+
+    reducers: set[str] = set()
+    reversed_vars: set[str] = {
+        m.group(1).lower() for m in _PS_ARRAY_REVERSE_RE.finditer(text)
+    }
+    symbols: dict[str, str] = {}
+    total_bytes = 0
+    rebuilt: list[str] = []
+
+    for stmt, sep in _split_ps_statements(text):
+        m_assign = _PS_ASSIGN_STMT_RE.match(stmt)
+        if m_assign:
+            vname = m_assign.group(2).lower()
+            op = m_assign.group(3)
+            rhs_raw = m_assign.group(4)
+            if vname not in _PS_AUTOMATIC_VARS:
+                val = _eval_ps_rhs(rhs_raw, symbols)
+                if val is not None:
+                    new_val = (symbols.get(vname, "") + val) if op == "+=" else val
+                    if vname in reversed_vars and op == "=":
+                        new_val = new_val[::-1]
+                        reducers.add("array_reverse")
+                    new_size = len(new_val.encode("utf-8", errors="replace"))
+                    old_size = len(symbols.get(vname, "").encode("utf-8", errors="replace"))
+                    within_var_cap = (vname in symbols) or (len(symbols) < MAX_SYMBOL_VARS)
+                    within_val_cap = new_size <= MAX_SYMBOL_VALUE_BYTES
+                    within_total_cap = (total_bytes - old_size + new_size) <= MAX_SYMBOL_TOTAL_BYTES
+                    if within_var_cap and within_val_cap and within_total_cap:
+                        symbols[vname] = new_val
+                        total_bytes = total_bytes - old_size + new_size
+                rebuilt.append(stmt + sep)
+                continue
+
+        # Non-assignment or non-string assignment: substitute known symbols
+        if symbols:
+            new_stmt, changed, used_call_op = _substitute_ps_vars(stmt, symbols, quote_outside=False)
+            if changed:
+                reducers.add("variable_propagation")
+            if used_call_op:
+                reducers.add("call_operator_var")
+            rebuilt.append(new_stmt + sep)
+        else:
+            rebuilt.append(stmt + sep)
+
+    return "".join(rebuilt), reducers
+
+
 def _fold_pass(text: str) -> tuple[str, set[str]]:
     """Execute a single bottom-up static reduction pass."""
     reducers: set[str] = set()
@@ -356,39 +651,9 @@ def _fold_pass(text: str) -> tuple[str, set[str]]:
     )
     curr = _PAREN_FLAG_RE.sub(lambda m: m.group(1), curr)
 
-    # 12. PowerShell single-assignment constant propagation and [array]::Reverse($x)
-    var_counts: Counter[str] = Counter()
-    var_values: dict[str, str] = {}
-    for m in _PS_VAR_ASSIGN_RE.finditer(curr):
-        vname = m.group(1).lower()
-        var_counts[vname] += 1
-        var_values[vname] = _unquote(m.group(2))
-
-    single_vars = {k: v for k, v in var_values.items() if var_counts[k] == 1}
-    if single_vars:
-        reversed_vars: set[str] = {
-            m.group(1).lower() for m in _PS_ARRAY_REVERSE_RE.finditer(curr)
-        }
-        for rv in reversed_vars:
-            if rv in single_vars:
-                single_vars[rv] = single_vars[rv][::-1]
-                reducers.add("array_reverse")
-
-        # Fold $x -join '' when $x was reversed or assigned a string
-        for vname, vval in single_vars.items():
-            join_pat = re.compile(
-                rf"\${vname}\b\s*-join\s*({_QUOTED_STR_PAT})?",
-                re.IGNORECASE,
-            )
-            if join_pat.search(curr):
-                reducers.add("variable_propagation")
-                curr = join_pat.sub(lambda m, val=vval: _quote_single(val), curr)
-
-            # Substitute &$var or $var outside the assignment itself
-            call_pat = re.compile(rf"(?:&\s*)?\${vname}\b(?!\s*=)", re.IGNORECASE)
-            if call_pat.search(curr):
-                reducers.add("variable_propagation")
-                curr = call_pat.sub(lambda m, val=vval: val, curr)
+    # 12. PowerShell bounded multi-line symbol-table resolution & [array]::Reverse($x)
+    curr, ps_sym_reducers = _resolve_ps_symbol_table(curr)
+    reducers.update(ps_sym_reducers)
 
     # 13. Bash variable assignment & ${var//a/b} parameter expansion
     bash_vars: dict[str, str] = {}

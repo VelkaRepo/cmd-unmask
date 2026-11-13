@@ -514,6 +514,14 @@ def _is_authorized_va_audit_baseline(
     return any(_VA_AUDIT_PINVOKE_RE.search(txt) for txt in all_texts)
 
 
+def _is_benign_var_prop_edge(edge: object) -> bool:
+    """Return True if an expression_resolver edge only performed plain variable substitution."""
+    return (
+        getattr(edge, "technique", None) == "expression_resolver"
+        and getattr(edge, "parameters", {}).get("reducers") == ["variable_propagation"]
+    )
+
+
 def classify_dag(
     dag: UnpackingDAG,
     iocs: list[ExtractedIOC] | None = None,
@@ -532,6 +540,8 @@ def classify_dag(
 
     # Stage 1: Obfuscation and decoding mechanics from DAG edges
     for edge in dag.edges:
+        if _is_benign_var_prop_edge(edge):
+            continue
         if edge.technique in ("shell_normalizer", "expression_resolver"):
             if "OBF_COMMAND" not in seen_rules:
                 seen_rules.add("OBF_COMMAND")
@@ -631,8 +641,9 @@ def score_verdict(
     iocs: list[ExtractedIOC],
 ) -> tuple[int, Severity]:
     """Compute deterministic Risk Score (0-100) and Severity from behavioral hits, IOCs, and DAG depth."""
-    chain = dag.get_provenance_chain(dag.primary_leaf_id)
-    obfuscation_layers = len(chain) or (1 if dag.edges else 0)
+    chain = [e for e in dag.get_provenance_chain(dag.primary_leaf_id) if not _is_benign_var_prop_edge(e)]
+    non_benign_edges = [e for e in dag.edges if not _is_benign_var_prop_edge(e)]
+    obfuscation_layers = len(chain) or (1 if non_benign_edges else 0)
 
     if not behavioral_matches and (
         obfuscation_layers == 0 or _is_authorized_va_audit_baseline(dag, behavioral_matches, iocs)
