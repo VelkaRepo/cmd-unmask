@@ -96,4 +96,13 @@ _Avoid_: Null garbage, wide-char noise, zero bytes
 Known read-only enterprise vulnerability assessment (VA) and configuration-audit signatures (such as Nessus `NetGetJoinInformation` checks) explicitly distinguished from offensive Win32 injection APIs to prevent False Positives.
 _Avoid_: Scanner whitelist, safe list, bypass rule
 
+**Behavioral Capability Summary**:
+The structured list of non-IOC operational behaviors extracted statically from an unmasked payload—such as file write targets, Win32/.NET P/Invoke API imports, and registry key operations—giving SOC analysts immediate intent visibility.
+_Avoid_: Behavior dump, API log, capability tags
+
+**Verdict Rationale**:
+The explicit, human-readable explanation recorded on a Triage Verdict detailing why a command scored `BENIGN` (such as Authorized Audit Baseline suppression) or why specific behavioral rules escalated its severity.
+_Avoid_: Reason string, debug note, justification text
+
+
 
