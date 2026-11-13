@@ -91,12 +91,12 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         self.assertIn("T1105", copied_notes[0])
 
     def test_interactive_tty_prompt_and_clipboard_fallback(self) -> None:
-        # Case 1: User types a command at the interactive prompt
+        # Case 1: Empty TTY invocation defaults directly to OS clipboard
         buf1 = io.StringIO()
         err1 = io.StringIO()
         with (
             patch("sys.stdin.isatty", return_value=True),
-            patch("builtins.input", return_value="whoami /all"),
+            patch("cmd_unmask.cli.get_clipboard_text", return_value="whoami /all"),
             redirect_stdout(buf1),
             patch("sys.stderr", err1),
         ):
@@ -104,19 +104,17 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         self.assertEqual(code1, 0)
         self.assertIn("whoami /all", buf1.getvalue())
 
-        # Case 2: User presses Enter at prompt -> falls back to clipboard
+        # Case 2: Empty TTY invocation with empty clipboard prints help and returns 1
         buf2 = io.StringIO()
         err2 = io.StringIO()
         with (
             patch("sys.stdin.isatty", return_value=True),
-            patch("builtins.input", return_value=""),
-            patch("cmd_unmask.cli.get_clipboard_text", return_value="hostname"),
+            patch("cmd_unmask.cli.get_clipboard_text", return_value=""),
             redirect_stdout(buf2),
             patch("sys.stderr", err2),
         ):
             code2 = main(["--no-color"])
-        self.assertEqual(code2, 0)
-        self.assertIn("hostname", buf2.getvalue())
+        self.assertEqual(code2, 1)
 
         # Case 3: Explicit --format markdown still renders clean Markdown without node_0 -> node_1
         buf_md = io.StringIO()

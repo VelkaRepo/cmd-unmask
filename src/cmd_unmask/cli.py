@@ -150,6 +150,12 @@ def build_parser() -> argparse.ArgumentParser:
         prog="cmd-unmask",
         description="Static command-line de-obfuscation and behavioral triage Tracer Script.",
     )
+    parser.add_argument(
+        "target",
+        nargs="?",
+        default=None,
+        help="Optional file path or raw command string (auto-detected).",
+    )
     parser.add_argument("-c", "--cmd", help="Single obfuscated command string to unmask.")
     parser.add_argument("-f", "--file", help="Path to raw text, JSON, or JSONL input file.")
     parser.add_argument(
@@ -327,6 +333,19 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     elif args.file is not None:
         records.extend(ingest_source(args.file, custom_field=args.field))
+    elif args.target is not None:
+        if os.path.isfile(args.target):
+            records.extend(ingest_source(args.target, custom_field=args.field))
+        else:
+            records.append(
+                ingest_single_command(
+                    args.target,
+                    source_id="cli",
+                    image=args.image,
+                    parent_image=args.parent,
+                    parent_command=args.parent_cmd,
+                )
+            )
     elif not sys.stdin.isatty():
         stdin_text = sys.stdin.read()
         records.append(
@@ -339,37 +358,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
     else:
-        try:
-            sys.stderr.write("Paste obfuscated command (or press Enter to read from clipboard): ")
-            sys.stderr.flush()
-            typed = input().strip()
-        except EOFError:
-            typed = ""
-        if typed:
+        clip_text = get_clipboard_text()
+        if clip_text and clip_text.strip():
             records.append(
                 ingest_single_command(
-                    typed,
-                    source_id="interactive",
+                    clip_text,
+                    source_id="clipboard",
                     image=args.image,
                     parent_image=args.parent,
                     parent_command=args.parent_cmd,
                 )
             )
         else:
-            clip_text = get_clipboard_text()
-            if clip_text and clip_text.strip():
-                records.append(
-                    ingest_single_command(
-                        clip_text,
-                        source_id="clipboard",
-                        image=args.image,
-                        parent_image=args.parent,
-                        parent_command=args.parent_cmd,
-                    )
-                )
-            else:
-                parser.print_help(sys.stderr)
-                return 1
+            parser.print_help(sys.stderr)
+            return 1
 
     verdicts: list[TriageVerdict] = []
     for rec in records:
