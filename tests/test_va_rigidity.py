@@ -2,6 +2,7 @@ import base64
 import unittest
 
 from cmd_unmask.models import Severity
+from cmd_unmask.normalizer import normalize_shell
 from cmd_unmask.unpacker import unmask_command
 
 
@@ -39,6 +40,48 @@ class TestRawBase64AndUtf16leNormalization(unittest.TestCase):
                 [],
                 f"Falsely decoded benign counter-example: {raw!r}",
             )
+
+
+class TestHereStringPreservation(unittest.TestCase):
+    def test_single_and_double_quoted_here_strings_preserved_intact(self):
+        sq_script = (
+            "$code = @'\n"
+            "using System;\n"
+            "// don't mangle ^ carets, %TEMP%, \"\"empty\"\", or `backticks\n"
+            "public class Audit { public static int Ping() { return 1; } }\n"
+            "'@\n"
+            "Add-Type -TypeDefinition $code"
+        )
+        res_sq = normalize_shell(sq_script)
+        self.assertEqual(res_sq.normalized_text, sq_script)
+
+        dq_script = (
+            "$code = @\"\n"
+            "using System;\n"
+            "// preserve ^ carets, %WINDIR%, and `n backticks inside @\"...\"@\n"
+            "public class Audit2 { }\n"
+            "\"@\n"
+            "Add-Type -TypeDefinition $code"
+        )
+        res_dq = normalize_shell(dq_script)
+        self.assertEqual(res_dq.normalized_text, dq_script)
+
+    def test_encoded_utf16le_add_type_herestring_unmasks_cleanly(self):
+        script = (
+            "$src = @'\n"
+            "using System.Runtime.InteropServices;\n"
+            "public class NetJoin {\n"
+            "  [DllImport(\"Netapi32.dll\")]\n"
+            "  public static extern int NetGetJoinInformation(string s, out System.IntPtr b, out int t);\n"
+            "}\n"
+            "'@\n"
+            "Add-Type -TypeDefinition $src"
+        )
+        b64 = base64.b64encode(script.encode("utf-16le")).decode("ascii")
+        verdict = unmask_command(f"powershell.exe -NoP -EncodedCommand {b64}")
+        self.assertIn("@'\nusing System.Runtime.InteropServices;", verdict.primary_unmasked_payload)
+        self.assertIn("'\nAdd-Type -TypeDefinition $src".replace("'\n", "'@\n"), verdict.primary_unmasked_payload)
+        self.assertNotIn("\x00", verdict.primary_unmasked_payload)
 
 
 if __name__ == "__main__":

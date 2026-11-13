@@ -97,6 +97,11 @@ _SET_ASSIGN_RE = re.compile(
 
 _ENV_EXPR_RE = re.compile(r"%([A-Za-z_][A-Za-z0-9_()]*(?::[^%]+)?)%")
 
+_HERE_STRING_RE = re.compile(
+    r"(@'[ \t]*\r?\n.*?\r?\n'@|@\"[ \t]*\r?\n.*?\r?\n\"@)",
+    re.DOTALL,
+)
+
 
 @dataclass
 class NormalizationResult:
@@ -321,6 +326,18 @@ def _normalize_powershell_pass(text: str) -> tuple[str, bool]:
     return result, (result != text)
 
 
+def _normalize_chunk(text: str) -> tuple[str, list[str], dict[str, str]]:
+    applied: list[str] = []
+    after_cmd, cmd_mod, env_vars = _normalize_cmd_pass(text)
+    if cmd_mod:
+        applied.append("cmd_normalizer")
+
+    after_ps, ps_mod = _normalize_powershell_pass(after_cmd)
+    if ps_mod:
+        applied.append("powershell_normalizer")
+    return after_ps, applied, env_vars
+
+
 def normalize_shell(command_text: str) -> NormalizationResult:
     """Execute the two-pass quote-aware Shell Normalizer (cmd.exe + PowerShell)."""
     if not command_text:
@@ -330,21 +347,48 @@ def normalize_shell(command_text: str) -> NormalizationResult:
             modified=False,
         )
 
-    applied: list[str] = []
-    after_cmd, cmd_mod, env_vars = _normalize_cmd_pass(command_text)
-    if cmd_mod:
-        applied.append("cmd_normalizer")
+    if not _HERE_STRING_RE.search(command_text):
+        after_ps, applied, env_vars = _normalize_chunk(command_text)
+        return NormalizationResult(
+            original_text=command_text,
+            normalized_text=after_ps,
+            modified=(after_ps != command_text),
+            applied_passes=applied,
+            resolved_env_vars=env_vars,
+        )
 
-    after_ps, ps_mod = _normalize_powershell_pass(after_cmd)
-    if ps_mod:
-        applied.append("powershell_normalizer")
+    out_parts: list[str] = []
+    applied_all: list[str] = []
+    env_all: dict[str, str] = {}
+    last_idx = 0
+    for match in _HERE_STRING_RE.finditer(command_text):
+        if match.start() > last_idx:
+            chunk = command_text[last_idx : match.start()]
+            norm_chunk, app, ev = _normalize_chunk(chunk)
+            out_parts.append(norm_chunk)
+            for pass_name in app:
+                if pass_name not in applied_all:
+                    applied_all.append(pass_name)
+            env_all.update(ev)
+        out_parts.append(match.group(0))
+        last_idx = match.end()
 
+    if last_idx < len(command_text):
+        tail = command_text[last_idx:]
+        norm_tail, app, ev = _normalize_chunk(tail)
+        out_parts.append(norm_tail)
+        for pass_name in app:
+            if pass_name not in applied_all:
+                applied_all.append(pass_name)
+        env_all.update(ev)
+
+    final_text = "".join(out_parts)
     return NormalizationResult(
         original_text=command_text,
-        normalized_text=after_ps,
-        modified=(after_ps != command_text),
-        applied_passes=applied,
-        resolved_env_vars=env_vars,
+        normalized_text=final_text,
+        modified=(final_text != command_text),
+        applied_passes=applied_all,
+        resolved_env_vars=env_all,
     )
 
 
