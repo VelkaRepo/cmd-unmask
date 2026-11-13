@@ -6,8 +6,8 @@
 
 [![Python 3.10+ stdlib-only](https://img.shields.io/badge/python-3.10%2B%20stdlib--only-blue.svg)](#)
 [![Dependencies: Zero](https://img.shields.io/badge/dependencies-zero-009688.svg)](#)
-[![Tests](https://img.shields.io/badge/tests-150%20passed-success.svg)](#)
-[![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(67%20fixtures)-brightgreen.svg)](#)
+[![Tests](https://img.shields.io/badge/tests-160%20passed-success.svg)](#)
+[![FPR: 0.0000](https://img.shields.io/badge/FPR-0.0000%20(71%20fixtures)-brightgreen.svg)](#)
 
 [Quickstart](#quickstart) · [Architecture](#architecture) · [Detection Rigidity](#detection-rigidity) · [CLI Reference](#cli-reference) · [ADRs](docs/adr/README.md)
 
@@ -116,11 +116,11 @@ cmd-unmask --benchmark -v
 <a id="detection-rigidity"></a>
 ## Detection Coverage & False-Positive Rigidity
 
-Validated against 67 labeled corpus fixtures (`35` malicious, `32` benign enterprise commands) with `Precision=1.0000`, `Recall=1.0000`, `FPR=0.0000`, and `p50 < 1ms` per command.
+Validated against 71 labeled corpus fixtures (`37` malicious, `34` benign enterprise commands) with `Precision=1.0000`, `Recall=1.0000`, `FPR=0.0000`, and `p50 < 1ms` per command.
 
 | Mechanism | Threat / Operational Coverage | False-Positive Rigidity |
 | :--- | :--- | :--- |
-| **Obfuscation Unpacking** | `cmd.exe` carets/env-slices, PS backticks/`-f`/`[char]`/`-join`, UTF-16LE Base64 (including raw standalone blobs), Gzip/Deflate, Hex/URL/XOR | Entropy + printable-ratio gates; `@' ... '@` here-strings preserved; 256 KB stream ceiling |
+| **Obfuscation Unpacking** | `cmd.exe` carets/env-slices, PS backticks/`-f`/`[char]`/`[char[]]@(...) -join`/`$var` 4104 symbol-table reconstruction, UTF-16LE Base64, Gzip/Deflate, Hex/URL/XOR | Entropy + printable-ratio gates; `@' ... '@` & `'...'` literals preserved; automatic vars (`$env:*`, `$_`) untouched; 256 KB stream ceiling |
 | **Process Lineage & Staging** | Office (`WINWORD.EXE`), web server (`w3wp.exe`), WMI (`WmiPrvSE.exe`) spawn matrix; `\Users\Public\`, `\AppData\Local\Temp\`, `/dev/shm/` staging | Canonical OS/admin parents (`explorer.exe -> cmd.exe`, `services.exe -> svchost.exe`) and `Program Files` paths never trigger |
 | **Win32 P/Invoke vs. VA Audit** | Flags offensive memory-injection APIs (`VirtualAlloc`, `WriteProcessMemory`, `CreateRemoteThread`, `OpenProcess` — `T1055`) | **Authorized Audit Baseline** recognizes read-only Nessus/VA `Netapi32.dll` (`NetGetJoinInformation`, `NetApiBufferFree`) checks as `BENIGN (0/100)` |
 | **Contextual IOC Extraction** | URLs, domains, IPv4/IPv6, file paths, MD5/SHA1/SHA256, and cloud metadata SSRF (`169.254.169.254`) | Suppresses `.NET` namespaces (`Net.WebClient`), hex blobs, and link-local-only metadata queries from `T1105` escalation |
@@ -186,7 +186,7 @@ Matches `python -m cmd_unmask --help`:
 ### Development & Testing
 
 ```bash
-# Run full unit and integration test suite (150 tests)
+# Run full unit and integration test suite (160 tests)
 python -m unittest discover -s tests -v
 
 # Run Regression Corpus benchmark and Detection Rigidity Gate
