@@ -112,6 +112,23 @@ _Avoid_: Flagless mode, magic mode, auto-cli
 Automatic detection and structured parsing of SIEM/EDR JSON or JSONL event payloads pasted into the OS clipboard or positional input, extracting `CommandLine`, `ParentImage`, `ParentCommandLine`, and `Image` without requiring `-f`.
 _Avoid_: Smart paste, JSON sniffer, clipboard parser
 
+**Domain Knowledge Base**:
+The static, zero-dependency catalog in `knowledge.py` profiling 40+ Windows/Linux LOLBins, shell execution flag semantics, canonical OS binary paths, and network target classifications.
+_Avoid_: Threat feed, lookup table, static DB
+
+**Attack-Chain Correlation**:
+The deterministic synthesis of multi-signal telemetry—process lineage, obfuscation layers, LOLBin profiles, and network targets—into a cohesive kill-chain narrative (`Delivery -> Evasion -> Execution/C2/Impact`).
+_Avoid_: AI summary, alert stitching, heuristic guess
+
+**Binary Masquerading**:
+Execution of a canonical OS binary name (such as `svchost.exe`, `lsass.exe`, `powershell.exe`, or `curl`) from a non-standard or user-writable directory outside trusted system paths (`T1036.005`).
+_Avoid_: Fake exe, spoofed path, renamed binary
+
+**Investigation Playbook**:
+Artifact-specific, actionable Tier-1/Tier-2 SOC triage and containment steps generated deterministically from observed IOCs, file paths, process lineage, and MITRE ATT&CK techniques.
+_Avoid_: Generic checklist, AI advice, remediation script
+
+
 
 
 
