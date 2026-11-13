@@ -53,6 +53,9 @@ class IngestionRecord:
     raw_input: str
     command_text: str
     warnings: list[str] = field(default_factory=list)
+    image: str | None = None
+    parent_image: str | None = None
+    parent_command: str | None = None
 
 
 def compute_printable_ratio(text: str) -> float:
@@ -232,6 +235,9 @@ class TriageVerdict:
     risk_score: int = 0
     severity: Severity = Severity.UNKNOWN
     warnings: list[str] = field(default_factory=list)
+    image: str | None = None
+    parent_image: str | None = None
+    parent_command: str | None = None
 
     def to_dict(self, defang: bool = True) -> dict[str, Any]:
         return {
@@ -240,6 +246,9 @@ class TriageVerdict:
             "primary_unmasked_payload": self.primary_unmasked_payload,
             "severity": self.severity.value,
             "risk_score": self.risk_score,
+            "image": self.image,
+            "parent_image": self.parent_image,
+            "parent_command": self.parent_command,
             "provenance_chain": [step.to_dict() for step in self.provenance_chain],
             "leaf_payloads": list(self.leaf_payloads),
             "iocs": [
@@ -294,6 +303,9 @@ class CorpusFixture:
     must_not_match: list[str] = field(default_factory=list)
     description: str = ""
     category: str = "uncategorized"
+    image: str | None = None
+    parent_image: str | None = None
+    parent_command: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -301,6 +313,9 @@ class CorpusFixture:
             "label": self.label,
             "category": self.category,
             "command": self.command,
+            "image": self.image,
+            "parent_image": self.parent_image,
+            "parent_command": self.parent_command,
             "expected_severity": self.expected_severity.value if self.expected_severity else None,
             "min_severity": self.min_severity.value if self.min_severity else None,
             "max_severity": self.max_severity.value if self.max_severity else None,
