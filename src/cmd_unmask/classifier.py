@@ -213,6 +213,17 @@ _NODE_RULES: tuple[_BehavioralRule, ...] = (
             re.IGNORECASE,
         ),
     ),
+    _BehavioralRule(
+        rule_id="WIN32_PROCESS_INJECTION",
+        name="Win32 Memory / Thread Process Injection API",
+        mitre_id="T1055",
+        tactic="Defense Evasion",
+        weight=45,
+        pattern=re.compile(
+            r"\b(?:VirtualAlloc(?:Ex)?|WriteProcessMemory|CreateRemoteThread|NtAllocateVirtualMemory|NtWriteVirtualMemory|NtCreateThreadEx|NtUnmapViewOfSection|RtlMoveMemory|QueueUserAPC)\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
 
 
@@ -469,6 +480,40 @@ def classify_staging_path(
     return []
 
 
+_VA_AUDIT_PINVOKE_RE = re.compile(
+    r"\bnetapi32(?:\.dll)?\b.*?\b(?:NetGetJoinInformation|NetApiBufferFree)\b"
+    r"|\b(?:NetGetJoinInformation|NetApiBufferFree)\b.*?\bnetapi32(?:\.dll)?\b",
+    re.IGNORECASE | re.DOTALL,
+)
+_VA_DISQUALIFYING_EXEC_RE = re.compile(
+    r"(?:\b(?:iex|invoke-expression)\b|-(?:w|windowstyle)\s+hidden\b|frombase64string|io\.compression\.(?:gzip|deflate)stream)",
+    re.IGNORECASE,
+)
+_BENIGN_SUPPRESSIBLE_RULES: frozenset[str] = frozenset(
+    {"OBF_COMMAND", "OBF_DECODE", "PS_SUSPICIOUS_EXEC"}
+)
+
+
+def _is_authorized_va_audit_baseline(
+    dag: UnpackingDAG,
+    behavioral_matches: list[BehavioralMatch],
+    iocs: list[ExtractedIOC],
+) -> bool:
+    """Return True if DAG matches a read-only VA audit baseline with zero offensive indicators."""
+    if any(m.rule_id not in _BENIGN_SUPPRESSIBLE_RULES for m in behavioral_matches):
+        return False
+    if any(ioc.ioc_type in ("url", "domain", "ipv4", "ipv6") for ioc in iocs):
+        return False
+
+    all_texts = [node.text for node in dag.nodes.values() if node.text]
+    if not all_texts:
+        return False
+    if any(_VA_DISQUALIFYING_EXEC_RE.search(txt) for txt in all_texts):
+        return False
+
+    return any(_VA_AUDIT_PINVOKE_RE.search(txt) for txt in all_texts)
+
+
 def classify_dag(
     dag: UnpackingDAG,
     iocs: list[ExtractedIOC] | None = None,
@@ -555,6 +600,10 @@ def classify_dag(
         if not has_external_host and not executes_download:
             matches = [m for m in matches if m.mitre_id != "T1105"]
 
+    # Stage 4: Authorized VA Audit Baseline suppression (e.g. Nessus NetGetJoinInformation)
+    if _is_authorized_va_audit_baseline(dag, matches, iocs):
+        return []
+
     return matches
 
 
@@ -567,7 +616,9 @@ def score_verdict(
     chain = dag.get_provenance_chain(dag.primary_leaf_id)
     obfuscation_layers = len(chain) or (1 if dag.edges else 0)
 
-    if not behavioral_matches and obfuscation_layers == 0:
+    if not behavioral_matches and (
+        obfuscation_layers == 0 or _is_authorized_va_audit_baseline(dag, behavioral_matches, iocs)
+    ):
         return 0, Severity.BENIGN
 
     base_score = sum(m.weight for m in behavioral_matches)
