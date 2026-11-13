@@ -21,8 +21,8 @@ class TestLineageRendererAndSigma(unittest.TestCase):
         self.assertIn("WINWORD.EXE -> ", note)
 
         pretty = render_pretty([with_lineage], color=False)
-        self.assertIn("Process Chain:", pretty)
-        self.assertIn("WINWORD.EXE -> ", pretty)
+        self.assertIn("Process Chain :", pretty)
+        self.assertIn("WINWORD.EXE ->", pretty)
 
         md = render_markdown([with_lineage])
         self.assertIn("**Process Chain**:", md)

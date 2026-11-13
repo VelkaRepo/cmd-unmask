@@ -21,14 +21,15 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         out = buf.getvalue()
 
         self.assertEqual(exit_code, 0)
-        # Box-drawing header and tree markers
-        self.assertIn("╔", out)
-        self.assertIn("├─►", out)
-        # Four required sections
+        # ASCII box-drawing header and tree markers when --no-color is passed
+        self.assertIn("+--", out)
+        self.assertIn("|--", out)
+        # Unified sequential HUD sections
         self.assertIn("[1] UNMASKING TIMELINE (LAYER-BY-LAYER)", out)
-        self.assertIn("[2] EXTRACTED IOCs (DEFANGED)", out)
-        self.assertIn("[3] WHY THIS WAS FLAGGED (MITRE ATT&CK & EVIDENCE)", out)
-        self.assertIn("[4] READY-TO-PASTE SOC TICKET NOTE", out)
+        self.assertIn("[2] BEHAVIORAL EVIDENCE & CAPABILITIES", out)
+        self.assertIn("[3] EXTRACTED IOCs (DEFANGED)", out)
+        self.assertIn("[4] RECOMMENDED L1/L2 NEXT STEPS", out)
+        self.assertIn("[5] READY-TO-PASTE SOC TICKET NOTE", out)
 
         # Human-readable step labels and intermediate payloads
         self.assertIn("Step 0 [Raw Input]", out)
@@ -42,20 +43,20 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         # No ANSI escape codes when --no-color is passed
         self.assertNotIn("\x1b[", out)
 
-        # Section [4] uses clean horizontal dividers without left vertical border characters
-        sec4 = out.split("[4] READY-TO-PASTE SOC TICKET NOTE")[1]
-        self.assertIn("────────", sec4)
-        self.assertNotIn("│", sec4)
-        self.assertNotIn("┌", sec4)
-        self.assertNotIn("└", sec4)
+        # Ticket note section uses clean ASCII horizontal dividers without left vertical border characters
+        sec_note = out.split("[5] READY-TO-PASTE SOC TICKET NOTE")[1]
+        self.assertIn("--------", sec_note)
+        self.assertNotIn("│", sec_note)
+        self.assertNotIn("┌", sec_note)
+        self.assertNotIn("└", sec_note)
         # Raw command (>90 chars) is truncated in the ticket note
-        self.assertIn(f"chars total)", sec4)
+        self.assertIn("chars total)", sec_note)
         # Unmasked Cmd is on its own indented line
-        self.assertIn(f"Unmasked Cmd  :\n  powershell.exe -NoP -W Hidden -c {inner}", sec4)
+        self.assertIn(f"Unmasked Cmd  :\n  powershell.exe -NoP -W Hidden -c {inner}", sec_note)
         # Multi-line bullet lists for IOCs and MITRE ATT&CK
-        self.assertIn("  - [URL] hxxp://c2[.]evil[.]example[:]8080/stage.ps1", sec4)
-        self.assertIn("  - [DOMAIN] c2[.]evil[.]example", sec4)
-        self.assertIn("  - T1059.001 : ", sec4)
+        self.assertIn("  - [URL] hxxp://c2[.]evil[.]example[:]8080/stage.ps1", sec_note)
+        self.assertIn("  - [DOMAIN] c2[.]evil[.]example", sec_note)
+        self.assertIn("  - T1059.001 : ", sec_note)
 
     def test_url_authority_domain_extracted_as_separate_domain_ioc(self) -> None:
         verdict = unmask_command(
@@ -133,8 +134,7 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         # 1. Pretty output must show [!] DIAGNOSTIC WARNINGS with truncation warning
         pretty_out = render_pretty([verdict], color=False)
         self.assertIn("[!] DIAGNOSTIC WARNINGS", pretty_out)
-        self.assertIn("Input Base64 appears truncated; payload decoded partially.", pretty_out)
-        self.assertIn("└─► Input Base64 appears truncated; payload decoded partially.", pretty_out)
+        self.assertIn("+-- Input Base64 appears truncated; payload decoded partially.", pretty_out)
 
         # 2. Markdown output must show Diagnostic Warnings section
         md_out = render_markdown([verdict])

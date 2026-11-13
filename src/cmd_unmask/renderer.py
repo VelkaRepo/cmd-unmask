@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import textwrap
 from cmd_unmask.models import BenchmarkReport, Severity, TriageVerdict
 
 _TECHNIQUE_LABELS: dict[str, str] = {
@@ -189,106 +190,143 @@ def render_pretty(
             return c_yellow + c_bold
         return c_green + c_bold
 
+    def _wrap_hud(text: str, width: int, indent: int = 16) -> list[str]:
+        wrapped = textwrap.wrap(
+            text,
+            width=width,
+            subsequent_indent=" " * indent,
+            break_long_words=True,
+            break_on_hyphens=False,
+        )
+        return wrapped if wrapped else [text]
+
+    tl, tr, bl, br, h, v, ml, mr = (
+        ("╭", "╮", "╰", "╯", "─", "│", "├", "┤")
+        if color
+        else ("+", "+", "+", "+", "-", "|", "+", "+")
+    )
+    branch, last_conn, pipe_ch, div_ch, em_dash = (
+        ("├─►", "└─►", "│", "─", "—")
+        if color
+        else ("|--", "+--", "|", "-", "--")
+    )
+
     blocks: list[str] = []
     for verdict in verdicts:
         timeline, node_labels = build_unmasking_timeline(verdict)
         sc = _sev_color(verdict.severity)
         header_title = (
-            f" Triage Verdict [{verdict.source_id}] | "
-            f"Severity: {verdict.severity.value} ({verdict.risk_score}/100) "
+            f"Triage Verdict [{verdict.source_id}] | "
+            f"Severity: {verdict.severity.value} ({verdict.risk_score}/100)"
         )
-        box_width = max(68, len(header_title) + 4)
-        top_bar = "╔" + ("═" * box_width) + "╗"
-        bot_bar = "╚" + ("═" * box_width) + "╝"
+        box_width = max(76, len(header_title) + 2)
+        inner_wrap = box_width - 2
+
+        def _box_row(content: str, style: str = "") -> str:
+            return f"{c_cyan}{v}{c_reset} {style}{content.ljust(inner_wrap)}{c_reset} {c_cyan}{v}{c_reset}"
 
         lines: list[str] = [
-            f"{c_cyan}{top_bar}{c_reset}",
-            f"{c_cyan}║{c_reset}{sc}{header_title.ljust(box_width)}{c_reset}{c_cyan}║{c_reset}",
-            f"{c_cyan}{bot_bar}{c_reset}",
+            f"{c_cyan}{tl}{h * box_width}{tr}{c_reset}",
+            _box_row(header_title, sc),
         ]
         process_chain = _format_process_chain(verdict)
         if process_chain:
-            lines.append(f"{c_bold}Process Chain:{c_reset} {process_chain}")
+            for p_line in _wrap_hud(f"Process Chain : {process_chain}", inner_wrap):
+                lines.append(_box_row(p_line, c_bold if p_line.startswith("Process Chain") else ""))
+        if verdict.executive_brief:
+            lines.append(f"{c_cyan}{ml}{h * box_width}{mr}{c_reset}")
+            for b_line in _wrap_hud(f"Exec Brief    : {verdict.executive_brief}", inner_wrap):
+                lines.append(_box_row(b_line))
+        lines.append(f"{c_cyan}{bl}{h * box_width}{br}{c_reset}")
+
+        sec_num = 1
         lines.extend(
             [
                 "",
-                f"{c_bold}{c_cyan}[1] UNMASKING TIMELINE (LAYER-BY-LAYER){c_reset}",
+                f"{c_bold}{c_cyan}[{sec_num}] UNMASKING TIMELINE (LAYER-BY-LAYER){c_reset}",
             ]
         )
+        sec_num += 1
 
         for idx, (step_num, label, text_val) in enumerate(timeline):
             is_last = idx == len(timeline) - 1
-            connector = "└─►" if is_last else "├─►"
+            connector = last_conn if is_last else branch
             tag = " [FINAL UNMASKED PAYLOAD]" if (is_last and len(timeline) > 1) else ""
             lines.append(
                 f"  {c_cyan}{connector}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
             )
-            pipe_prefix = "      " if is_last else f"  {c_cyan}│{c_reset}   "
+            pipe_prefix = "      " if is_last else f"  {c_cyan}{pipe_ch}{c_reset}   "
             display_text = _truncate_lines(text_val, full=full)
             for tline in display_text.splitlines() or [""]:
                 lines.append(f"{pipe_prefix}{tline}")
 
-        ioc_header_mode = "DEFANGED" if defang else "RAW"
         lines.append("")
-        lines.append(f"{c_bold}{c_cyan}[2] EXTRACTED IOCs ({ioc_header_mode}){c_reset}")
-        if verdict.iocs:
-            for i, ioc in enumerate(verdict.iocs):
-                conn = "└─►" if i == len(verdict.iocs) - 1 else "├─►"
-                val = ioc.defanged_value if defang else ioc.raw_value
-                origin_label = node_labels.get(ioc.source_node_id, "Unpacked Layer")
-                lines.append(
-                    f"  {c_cyan}{conn}{c_reset} [{c_yellow}{ioc.ioc_type}{c_reset}] {c_bold}{val}{c_reset} {c_dim}(from {origin_label}){c_reset}"
-                )
+        if (
+            verdict.severity == Severity.BENIGN
+            and not verdict.behavioral_matches
+            and not verdict.capabilities
+        ):
+            rationale_suffix = verdict.verdict_rationale or "No malicious behavioral indicators matched"
+            lines.append(
+                f"{c_bold}{c_cyan}[{sec_num}] BEHAVIORAL EVIDENCE:{c_reset} {c_dim}None {em_dash} {rationale_suffix}{c_reset}"
+            )
+            sec_num += 1
         else:
-            lines.append(f"  {c_dim}└─► None{c_reset}")
-
-        lines.append("")
-        lines.append(f"{c_bold}{c_cyan}[3] WHY THIS WAS FLAGGED (MITRE ATT&CK & EVIDENCE){c_reset}")
-        if verdict.behavioral_matches:
-            for i, match in enumerate(verdict.behavioral_matches):
-                conn = "└─►" if i == len(verdict.behavioral_matches) - 1 else "├─►"
+            lines.append(f"{c_bold}{c_cyan}[{sec_num}] BEHAVIORAL EVIDENCE & CAPABILITIES{c_reset}")
+            sec_num += 1
+            evidence_items: list[str] = []
+            for match in verdict.behavioral_matches:
                 clean_ev = _humanize_evidence(match.evidence, node_labels)
                 origin_label = node_labels.get(match.source_node_id, "Unpacked Layer")
-                lines.append(
-                    f"  {c_cyan}{conn}{c_reset} {c_bold}{match.mitre_id}{c_reset} ({match.tactic}) - {match.name}: {clean_ev} {c_dim}({origin_label}){c_reset}"
+                evidence_items.append(
+                    f"{c_bold}{match.mitre_id}{c_reset} ({match.tactic}) - {match.name}: {clean_ev} {c_dim}({origin_label}){c_reset}"
                 )
-        else:
-            lines.append(f"  {c_dim}└─► None (No malicious behavioral indicators matched){c_reset}")
+            for cap in verdict.capabilities:
+                evidence_items.append(f"[{c_yellow}CAPABILITY{c_reset}] {cap}")
+            if verdict.verdict_rationale:
+                evidence_items.append(f"[{c_dim}RATIONALE{c_reset}] {verdict.verdict_rationale}")
 
-        if verdict.capabilities:
-            lines.append("")
-            lines.append(f"{c_bold}{c_cyan}[BEHAVIORAL CAPABILITIES]{c_reset}")
-            for i, cap in enumerate(verdict.capabilities):
-                conn = "└─►" if i == len(verdict.capabilities) - 1 else "├─►"
-                lines.append(f"  {c_cyan}{conn}{c_reset} {cap}")
+            if evidence_items:
+                for i, item in enumerate(evidence_items):
+                    conn = last_conn if i == len(evidence_items) - 1 else branch
+                    lines.append(f"  {c_cyan}{conn}{c_reset} {item}")
+            else:
+                lines.append(f"  {c_dim}{last_conn} None (No malicious behavioral indicators matched){c_reset}")
 
-        if verdict.verdict_rationale:
+        if verdict.iocs or verdict.severity != Severity.BENIGN:
+            ioc_header_mode = "DEFANGED" if defang else "RAW"
             lines.append("")
-            lines.append(f"{c_bold}{c_cyan}[VERDICT RATIONALE]{c_reset}")
-            lines.append(f"  {c_cyan}└─►{c_reset} {verdict.verdict_rationale}")
-
-        if verdict.executive_brief:
-            lines.append("")
-            lines.append(f"{c_bold}{c_cyan}[ANALYST EXECUTIVE BRIEF]{c_reset}")
-            lines.append(f"  {c_cyan}└─►{c_reset} {verdict.executive_brief}")
+            lines.append(f"{c_bold}{c_cyan}[{sec_num}] EXTRACTED IOCs ({ioc_header_mode}){c_reset}")
+            sec_num += 1
+            if verdict.iocs:
+                for i, ioc in enumerate(verdict.iocs):
+                    conn = last_conn if i == len(verdict.iocs) - 1 else branch
+                    val = ioc.defanged_value if defang else ioc.raw_value
+                    origin_label = node_labels.get(ioc.source_node_id, "Unpacked Layer")
+                    lines.append(
+                        f"  {c_cyan}{conn}{c_reset} [{c_yellow}{ioc.ioc_type}{c_reset}] {c_bold}{val}{c_reset} {c_dim}(from {origin_label}){c_reset}"
+                    )
+            else:
+                lines.append(f"  {c_dim}{last_conn} None{c_reset}")
 
         if verdict.playbook_steps:
             lines.append("")
-            lines.append(f"{c_bold}{c_cyan}[RECOMMENDED L1/L2 NEXT STEPS]{c_reset}")
+            lines.append(f"{c_bold}{c_cyan}[{sec_num}] RECOMMENDED L1/L2 NEXT STEPS{c_reset}")
+            sec_num += 1
             for i, step in enumerate(verdict.playbook_steps):
-                conn = "└─►" if i == len(verdict.playbook_steps) - 1 else "├─►"
+                conn = last_conn if i == len(verdict.playbook_steps) - 1 else branch
                 lines.append(f"  {c_cyan}{conn}{c_reset} {i + 1}. {step}")
 
         if verdict.warnings:
             lines.append("")
             lines.append(f"{c_bold}{c_yellow}[!] DIAGNOSTIC WARNINGS{c_reset}")
             for i, w in enumerate(verdict.warnings):
-                conn = "└─►" if i == len(verdict.warnings) - 1 else "├─►"
+                conn = last_conn if i == len(verdict.warnings) - 1 else branch
                 lines.append(f"  {conn} {w}")
 
         lines.append("")
-        lines.append(f"{c_bold}{c_cyan}[4] READY-TO-PASTE SOC TICKET NOTE{c_reset}")
-        divider = "─" * 68
+        lines.append(f"{c_bold}{c_cyan}[{sec_num}] READY-TO-PASTE SOC TICKET NOTE{c_reset}")
+        divider = div_ch * 68
         lines.append(f"{c_dim}{divider}{c_reset}")
         for note_line in build_soc_ticket_note(verdict, defang=defang, full=full).splitlines():
             lines.append(note_line)
