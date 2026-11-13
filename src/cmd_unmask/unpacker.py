@@ -69,6 +69,17 @@ def _find_base64_candidates(text: str) -> list[_Base64SpanMatch]:
             seen_spans.add((s_idx, e_idx))
             candidates.append(_Base64SpanMatch(s_idx, e_idx, tok))
 
+    # 0. Multi-line wrapped standalone Base64 block (e.g. line-wrapped 64/76-char PEM/SIEM paste)
+    if "\n" in text or "\r" in text:
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        if len(lines) >= 2 and all(re.fullmatch(r"[A-Za-z0-9+/_=-]+", ln) for ln in lines):
+            joined = "".join(lines)
+            if re.fullmatch(r"[A-Za-z0-9+/_-]{16,}={0,2}", joined):
+                s_idx = len(text) - len(text.lstrip())
+                e_idx = len(text.rstrip())
+                _add(s_idx, e_idx, joined)
+                return candidates
+
     # 1. Standard Base64 runs bounded by non-standard base64 characters (including _, -, :, quotes)
     for m in _B64_STANDARD_RE.finditer(text):
         _add(m.start(1), m.end(1), m.group(1))
@@ -145,7 +156,7 @@ def _decode_bytes_to_text(raw_bytes: bytes) -> tuple[str, str, bool] | None:
         half_len = len(raw_bytes) // 2
         if odd_nulls / half_len >= 0.35:
             try:
-                text16 = raw_bytes.decode("utf-16le")
+                text16 = raw_bytes.decode("utf-16le").replace("\x00", "").lstrip("\ufeff")
                 if _passes_rigidity_gate(text16):
                     return text16, "utf-16le", False
             except Exception:
@@ -156,7 +167,7 @@ def _decode_bytes_to_text(raw_bytes: bytes) -> tuple[str, str, bool] | None:
         half_len = len(raw_even) // 2
         if odd_nulls / half_len >= 0.35:
             try:
-                text16 = raw_even.decode("utf-16le")
+                text16 = raw_even.decode("utf-16le").replace("\x00", "").lstrip("\ufeff")
                 if _passes_rigidity_gate(text16):
                     return text16, "utf-16le", True
             except Exception:
