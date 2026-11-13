@@ -324,14 +324,32 @@ def render_pretty(
                 conn = last_conn if i == len(verdict.warnings) - 1 else branch
                 lines.append(f"  {conn} {w}")
 
-        lines.append("")
-        lines.append(f"{c_bold}{c_cyan}[{sec_num}] READY-TO-PASTE SOC TICKET NOTE{c_reset}")
-        divider = div_ch * 68
-        lines.append(f"{c_dim}{divider}{c_reset}")
-        for note_line in build_soc_ticket_note(verdict, defang=defang, full=full).splitlines():
-            lines.append(note_line)
-        lines.append(f"{c_dim}{divider}{c_reset}")
+        blocks.append("\n".join(lines))
 
+    return "\n\n".join(blocks) + "\n"
+
+
+def render_soc_ticket_note_block(
+    verdicts: list[TriageVerdict],
+    defang: bool = True,
+    color: bool = True,
+    full: bool = False,
+) -> str:
+    """Render the standalone Ready-to-Paste [SOC TRIAGE NOTE] block(s) for --show-note."""
+    c_reset = "\x1b[0m" if color else ""
+    c_bold = "\x1b[1m" if color else ""
+    c_cyan = "\x1b[36m" if color else ""
+    c_dim = "\x1b[2m" if color else ""
+    divider = ("─" if color else "-") * 68
+
+    blocks: list[str] = []
+    for verdict in verdicts:
+        lines = [
+            f"{c_bold}{c_cyan}[+] READY-TO-PASTE SOC TICKET NOTE{c_reset}",
+            f"{c_dim}{divider}{c_reset}",
+        ]
+        lines.extend(build_soc_ticket_note(verdict, defang=defang, full=full).splitlines())
+        lines.append(f"{c_dim}{divider}{c_reset}")
         blocks.append("\n".join(lines))
 
     return "\n\n".join(blocks) + "\n"

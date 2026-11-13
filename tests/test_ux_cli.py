@@ -17,7 +17,7 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
 
         buf = io.StringIO()
         with redirect_stdout(buf):
-            exit_code = main(["-c", cmd, "--no-color"])
+            exit_code = main(["-c", cmd, "--no-color", "--show-note"])
         out = buf.getvalue()
 
         self.assertEqual(exit_code, 0)
@@ -29,7 +29,7 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         self.assertIn("[2] BEHAVIORAL EVIDENCE & CAPABILITIES", out)
         self.assertIn("[3] EXTRACTED IOCs (DEFANGED)", out)
         self.assertIn("[4] RECOMMENDED L1/L2 NEXT STEPS", out)
-        self.assertIn("[5] READY-TO-PASTE SOC TICKET NOTE", out)
+        self.assertIn("[+] READY-TO-PASTE SOC TICKET NOTE", out)
 
         # Human-readable step labels and intermediate payloads
         self.assertIn("Step 0 [Raw Input]", out)
@@ -44,7 +44,7 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         self.assertNotIn("\x1b[", out)
 
         # Ticket note section uses clean ASCII horizontal dividers without left vertical border characters
-        sec_note = out.split("[5] READY-TO-PASTE SOC TICKET NOTE")[1]
+        sec_note = out.split("[+] READY-TO-PASTE SOC TICKET NOTE")[1]
         self.assertIn("--------", sec_note)
         self.assertNotIn("│", sec_note)
         self.assertNotIn("┌", sec_note)

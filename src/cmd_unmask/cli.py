@@ -21,6 +21,7 @@ from cmd_unmask.renderer import (
     render_jsonl,
     render_markdown,
     render_pretty,
+    render_soc_ticket_note_block,
 )
 from cmd_unmask.sigma import generate_sigma_rule, render_sigma_yaml, render_sigma_yaml_bundle
 from cmd_unmask.unpacker import unmask_command
@@ -197,6 +198,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--copy-note",
         action="store_true",
         help="Copy the generated Ready-to-Paste SOC Ticket Note to the OS clipboard.",
+    )
+    output_det.add_argument(
+        "--show-note",
+        action="store_true",
+        help="Print the full borderless [SOC TRIAGE NOTE] block to stdout in pretty mode.",
     )
     output_det.add_argument(
         "--no-defang",
@@ -469,8 +475,18 @@ def main(argv: Sequence[str] | None = None) -> int:
             c_cyan = "\x1b[36m" if use_color else ""
             c_reset = "\x1b[0m" if use_color else ""
             sys.stdout.write(
-                f"\n{c_bold}{c_cyan}[5] AUTO-SYNTHESIZED SIGMA RULE{c_reset}\n"
+                f"\n{c_bold}{c_cyan}[+] AUTO-SYNTHESIZED SIGMA RULE{c_reset}\n"
                 + render_sigma_yaml_bundle(sigma_rules)
+            )
+        if args.show_note and verdicts:
+            sys.stdout.write(
+                "\n"
+                + render_soc_ticket_note_block(
+                    verdicts,
+                    defang=defang,
+                    color=use_color,
+                    full=args.full,
+                )
             )
 
     should_copy = bool(verdicts) and not args.no_copy and (
@@ -481,7 +497,25 @@ def main(argv: Sequence[str] | None = None) -> int:
         combined_notes = "\n\n".join(
             build_soc_ticket_note(v, defang=defang, full=args.full) for v in verdicts
         )
-        set_clipboard_text(combined_notes)
+        copied_ok = set_clipboard_text(combined_notes)
+        if args.format == "pretty" and not args.sigma:
+            c_green = "\x1b[32m" if use_color else ""
+            c_yellow = "\x1b[33m" if use_color else ""
+            c_reset = "\x1b[0m" if use_color else ""
+            if copied_ok:
+                sys.stdout.write(
+                    f"\n{c_green}[+] SOC Ticket Note copied to clipboard (use --show-note to print){c_reset}\n"
+                )
+            else:
+                sys.stdout.write(
+                    f"\n{c_yellow}[!] Clipboard unavailable (use --show-note to print){c_reset}\n"
+                )
+    elif verdicts and args.format == "pretty" and not args.sigma and not args.show_note:
+        c_dim = "\x1b[2m" if use_color else ""
+        c_reset = "\x1b[0m" if use_color else ""
+        sys.stdout.write(
+            f"\n{c_dim}[i] SOC Ticket Note omitted on stdout (use --show-note to print){c_reset}\n"
+        )
 
     if args.fail_on:
         threshold = Severity(args.fail_on)

