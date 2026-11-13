@@ -205,11 +205,7 @@ def render_pretty(
         if color
         else ("+", "+", "+", "+", "-", "|", "+", "+")
     )
-    branch, last_conn, pipe_ch, div_ch, em_dash = (
-        ("├─►", "└─►", "│", "─", "—")
-        if color
-        else ("|--", "+--", "|", "-", "--")
-    )
+    bullet, em_dash = ("•", "—") if color else ("-", "--")
 
     blocks: list[str] = []
     for verdict in verdicts:
@@ -233,6 +229,13 @@ def render_pretty(
             if verdict.executive_brief
             else []
         )
+        if len(brief_lines) > 2:
+            second = brief_lines[1].rstrip()
+            if len(second) + 3 > wrap_limit:
+                second = second[: wrap_limit - 3].rsplit(" ", 1)[0].rstrip(".,;:") + "..."
+            else:
+                second = second.rstrip(".,;:") + "..."
+            brief_lines = [brief_lines[0], second]
 
         all_hud_contents = [header_title, *proc_lines, *brief_lines]
         box_width = max(base_width, *(len(c) + 2 for c in all_hud_contents))
@@ -253,46 +256,7 @@ def render_pretty(
                 lines.append(_box_row(b_line))
         lines.append(f"{c_cyan}{bl}{h * box_width}{br}{c_reset}")
 
-        sec_num = 1
-        collapsed_single_payload = len(timeline) == 1 or (
-            len(timeline) == 2
-            and re.sub(r"\s+", " ", timeline[0][2].strip())
-            == re.sub(r"\s+", " ", timeline[1][2].strip())
-        )
-        if collapsed_single_payload:
-            lines.extend(
-                [
-                    "",
-                    f"{c_bold}{c_cyan}[{sec_num}] PAYLOAD{c_reset}",
-                ]
-            )
-            sec_num += 1
-            display_text = _truncate_lines(timeline[-1][2], full=full)
-            tlines = display_text.splitlines() or [""]
-            for i, tline in enumerate(tlines):
-                prefix = f"  {c_cyan}{last_conn}{c_reset} " if i == 0 else "      "
-                lines.append(f"{prefix}{tline}")
-        else:
-            lines.extend(
-                [
-                    "",
-                    f"{c_bold}{c_cyan}[{sec_num}] UNMASKING TIMELINE (LAYER-BY-LAYER){c_reset}",
-                ]
-            )
-            sec_num += 1
-
-            for idx, (step_num, label, text_val) in enumerate(timeline):
-                is_last = idx == len(timeline) - 1
-                connector = last_conn if is_last else branch
-                tag = " [FINAL UNMASKED PAYLOAD]" if (is_last and len(timeline) > 1) else ""
-                lines.append(
-                    f"  {c_cyan}{connector}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
-                )
-                pipe_prefix = "      " if is_last else f"  {c_cyan}{pipe_ch}{c_reset}   "
-                display_text = _truncate_lines(text_val, full=full)
-                for tline in display_text.splitlines() or [""]:
-                    lines.append(f"{pipe_prefix}{tline}")
-
+        # [1] FINDINGS & EVIDENCE
         lines.append("")
         if (
             verdict.severity == Severity.BENIGN
@@ -301,12 +265,10 @@ def render_pretty(
         ):
             rationale_suffix = verdict.verdict_rationale or "No malicious behavioral indicators matched"
             lines.append(
-                f"{c_bold}{c_cyan}[{sec_num}] BEHAVIORAL EVIDENCE:{c_reset} {c_dim}None {em_dash} {rationale_suffix}{c_reset}"
+                f"{c_bold}{c_cyan}[1] FINDINGS & EVIDENCE:{c_reset} {c_dim}None {em_dash} {rationale_suffix}{c_reset}"
             )
-            sec_num += 1
         else:
-            lines.append(f"{c_bold}{c_cyan}[{sec_num}] BEHAVIORAL EVIDENCE & CAPABILITIES{c_reset}")
-            sec_num += 1
+            lines.append(f"{c_bold}{c_cyan}[1] FINDINGS & EVIDENCE{c_reset}")
             evidence_items: list[str] = []
             for match in verdict.behavioral_matches:
                 clean_ev = _humanize_evidence(match.evidence, node_labels)
@@ -320,39 +282,61 @@ def render_pretty(
                 evidence_items.append(f"[{c_dim}RATIONALE{c_reset}] {verdict.verdict_rationale}")
 
             if evidence_items:
-                for i, item in enumerate(evidence_items):
-                    conn = last_conn if i == len(evidence_items) - 1 else branch
-                    lines.append(f"  {c_cyan}{conn}{c_reset} {item}")
+                for item in evidence_items:
+                    lines.append(f"  {c_cyan}{bullet}{c_reset} {item}")
             else:
-                lines.append(f"  {c_dim}{last_conn} None (No malicious behavioral indicators matched){c_reset}")
+                lines.append(f"  {c_dim}{bullet} None (No malicious behavioral indicators matched){c_reset}")
 
-        if verdict.iocs:
-            ioc_header_mode = "DEFANGED" if defang else "RAW"
+        # [2] IOCs & NEXT STEPS
+        if verdict.iocs or verdict.playbook_steps:
+            ioc_mode = "DEFANGED" if defang else "RAW"
             lines.append("")
-            lines.append(f"{c_bold}{c_cyan}[{sec_num}] EXTRACTED IOCs ({ioc_header_mode}){c_reset}")
-            sec_num += 1
-            for i, ioc in enumerate(verdict.iocs):
-                conn = last_conn if i == len(verdict.iocs) - 1 else branch
-                val = ioc.defanged_value if defang else ioc.raw_value
-                origin_label = node_labels.get(ioc.source_node_id, "Unpacked Layer")
-                lines.append(
-                    f"  {c_cyan}{conn}{c_reset} [{c_yellow}{ioc.ioc_type}{c_reset}] {c_bold}{val}{c_reset} {c_dim}(from {origin_label}){c_reset}"
-                )
-
-        if verdict.playbook_steps:
-            lines.append("")
-            lines.append(f"{c_bold}{c_cyan}[{sec_num}] RECOMMENDED L1/L2 NEXT STEPS{c_reset}")
-            sec_num += 1
+            lines.append(f"{c_bold}{c_cyan}[2] IOCs & NEXT STEPS{c_reset}")
+            if verdict.iocs:
+                for ioc in verdict.iocs:
+                    val = ioc.defanged_value if defang else ioc.raw_value
+                    origin_label = node_labels.get(ioc.source_node_id, "Unpacked Layer")
+                    lines.append(
+                        f"  {c_cyan}{bullet}{c_reset} [{c_yellow}{ioc.ioc_type}{c_reset}] {c_bold}{val}{c_reset} {c_dim}({ioc_mode}, from {origin_label}){c_reset}"
+                    )
             for i, step in enumerate(verdict.playbook_steps):
-                conn = last_conn if i == len(verdict.playbook_steps) - 1 else branch
-                lines.append(f"  {c_cyan}{conn}{c_reset} {i + 1}. {step}")
+                lines.append(f"  {c_cyan}{i + 1}.{c_reset} {step}")
+
+        # [3] PAYLOAD / UNMASKED PAYLOAD
+        lines.append("")
+        is_single_raw = len(timeline) == 1
+        is_trivial_norm = (
+            not full
+            and len(timeline) == 2
+            and timeline[1][1] == "Shell Normalizer"
+        )
+        if is_single_raw:
+            lines.append(f"{c_bold}{c_cyan}[3] PAYLOAD{c_reset}")
+            display_text = _truncate_lines(timeline[0][2], head=6, tail=4, full=full)
+            for tline in display_text.splitlines() or [""]:
+                lines.append(f"  {tline}")
+        elif is_trivial_norm:
+            lines.append(f"{c_bold}{c_cyan}[3] PAYLOAD (normalized){c_reset}")
+            display_text = _truncate_lines(timeline[-1][2], head=6, tail=4, full=full)
+            for tline in display_text.splitlines() or [""]:
+                lines.append(f"  {tline}")
+        else:
+            lines.append(f"{c_bold}{c_cyan}[3] UNMASKED PAYLOAD{c_reset}")
+            for idx, (step_num, label, text_val) in enumerate(timeline):
+                is_last = idx == len(timeline) - 1
+                tag = " [FINAL UNMASKED PAYLOAD]" if (is_last and len(timeline) > 1) else ""
+                lines.append(
+                    f"  {c_cyan}{bullet}{c_reset} {c_bold}Step {step_num} [{label}]{tag}{c_reset}"
+                )
+                display_text = _truncate_lines(text_val, head=6, tail=4, full=full)
+                for tline in display_text.splitlines() or [""]:
+                    lines.append(f"    {tline}")
 
         if verdict.warnings:
             lines.append("")
             lines.append(f"{c_bold}{c_yellow}[!] DIAGNOSTIC WARNINGS{c_reset}")
-            for i, w in enumerate(verdict.warnings):
-                conn = last_conn if i == len(verdict.warnings) - 1 else branch
-                lines.append(f"  {conn} {w}")
+            for w in verdict.warnings:
+                lines.append(f"  {bullet} {w}")
 
         blocks.append("\n".join(lines))
 

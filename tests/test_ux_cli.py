@@ -21,14 +21,13 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         out = buf.getvalue()
 
         self.assertEqual(exit_code, 0)
-        # ASCII box-drawing header and tree markers when --no-color is passed
-        self.assertIn("+--", out)
-        self.assertIn("|--", out)
-        # Unified sequential HUD sections
-        self.assertIn("[1] UNMASKING TIMELINE (LAYER-BY-LAYER)", out)
-        self.assertIn("[2] BEHAVIORAL EVIDENCE & CAPABILITIES", out)
-        self.assertIn("[3] EXTRACTED IOCs (DEFANGED)", out)
-        self.assertIn("[4] RECOMMENDED L1/L2 NEXT STEPS", out)
+        # ASCII box-drawing header and clean bullet markers when --no-color is passed
+        self.assertIn("+", out)
+        self.assertIn("  - ", out)
+        # Clean 3-section top-down HUD
+        self.assertIn("[1] FINDINGS & EVIDENCE", out)
+        self.assertIn("[2] IOCs & NEXT STEPS", out)
+        self.assertIn("[3] UNMASKED PAYLOAD", out)
         self.assertIn("[+] READY-TO-PASTE SOC TICKET NOTE", out)
 
         # Human-readable step labels and intermediate payloads
@@ -134,7 +133,7 @@ class TestOperatorUxAndVisualCli(unittest.TestCase):
         # 1. Pretty output must show [!] DIAGNOSTIC WARNINGS with truncation warning
         pretty_out = render_pretty([verdict], color=False)
         self.assertIn("[!] DIAGNOSTIC WARNINGS", pretty_out)
-        self.assertIn("+-- Input Base64 appears truncated; payload decoded partially.", pretty_out)
+        self.assertIn("  - Input Base64 appears truncated; payload decoded partially.", pretty_out)
 
         # 2. Markdown output must show Diagnostic Warnings section
         md_out = render_markdown([verdict])
