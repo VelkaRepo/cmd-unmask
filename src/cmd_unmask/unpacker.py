@@ -10,7 +10,13 @@ import zlib
 from collections import deque
 from typing import Any
 
-from cmd_unmask.classifier import classify_dag, classify_node_text, extract_capabilities, score_verdict
+from cmd_unmask.classifier import (
+    build_verdict_rationale,
+    classify_dag,
+    classify_node_text,
+    extract_capabilities,
+    score_verdict,
+)
 from cmd_unmask.ioc import extract_iocs, extract_iocs_from_text
 from cmd_unmask.models import (
     PayloadNode,
@@ -720,6 +726,7 @@ def unmask_command(
                 image=image,
                 parent_image=parent_image,
                 parent_command=parent_command,
+                verdict_rationale="Verdict UNKNOWN: empty or whitespace-only command input.",
             )
 
         dag = unpack_dag(raw_cmd, cfg)
@@ -736,6 +743,9 @@ def unmask_command(
         )
         risk_score, severity = score_verdict(dag, behaviors, harvested_iocs)
         capabilities = extract_capabilities(dag, primary_text=primary_node.text)
+        verdict_rationale = build_verdict_rationale(
+            dag, behaviors, harvested_iocs, severity, risk_score
+        )
 
         return TriageVerdict(
             source_id=source_id,
@@ -753,6 +763,7 @@ def unmask_command(
             parent_image=parent_image,
             parent_command=parent_command,
             capabilities=capabilities,
+            verdict_rationale=verdict_rationale,
         )
     except Exception as exc:  # Defensive fallback per engineering standards
         warnings.append(f"Pipeline error: {exc}")
@@ -773,4 +784,5 @@ def unmask_command(
             image=image,
             parent_image=parent_image,
             parent_command=parent_command,
+            verdict_rationale=f"Verdict UNKNOWN: pipeline error ({exc}).",
         )

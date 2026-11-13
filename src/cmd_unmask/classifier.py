@@ -716,3 +716,41 @@ def extract_capabilities(
 
     return found
 
+
+def build_verdict_rationale(
+    dag: UnpackingDAG,
+    behavioral_matches: list[BehavioralMatch],
+    iocs: list[ExtractedIOC],
+    severity: Severity,
+    risk_score: int,
+) -> str:
+    """Generate a concise, explicit human-readable rationale for the triage verdict."""
+    if severity == Severity.UNKNOWN:
+        return "Verdict UNKNOWN: empty, missing, or unparseable command input prevented behavioral evaluation."
+
+    if severity == Severity.BENIGN:
+        if _is_authorized_va_audit_baseline(dag, behavioral_matches, iocs):
+            return (
+                "Authorized VA Audit Baseline matched (read-only Netapi32.dll NetGetJoinInformation/"
+                "NetApiBufferFree domain check) with zero offensive injection APIs or download cradles; "
+                "obfuscation/execution-wrapper flags suppressed."
+            )
+        return (
+            "Standard BENIGN: zero malicious behavioral rules, obfuscation layers, or suspicious "
+            "process-lineage patterns matched."
+        )
+
+    if behavioral_matches:
+        top_hits = sorted(behavioral_matches, key=lambda m: (-m.weight, m.rule_id))[:3]
+        summary = "; ".join(f"{m.name} [{m.mitre_id}]" for m in top_hits)
+        extra = f" (+{len(behavioral_matches) - 3} more)" if len(behavioral_matches) > 3 else ""
+        return f"{severity.value} ({risk_score}/100) driven by: {summary}{extra}."
+
+    chain = dag.get_provenance_chain(dag.primary_leaf_id)
+    layers = len(chain) or (1 if dag.edges else 0)
+    return (
+        f"{severity.value} ({risk_score}/100) driven by {layers} obfuscation/decoding layer(s) "
+        f"and {len(iocs)} extracted IOC(s)."
+    )
+
+

